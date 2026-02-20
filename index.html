@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runner Playable Clone</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <canvas id="game" width="540" height="960" aria-label="Runner game"></canvas>
+
+      <section id="start-overlay" class="overlay overlay-visible">
+        <h1>Play Runner</h1>
+        <p>Tap or press Space to jump over obstacles.</p>
+        <button id="start-btn" type="button">Start</button>
+      </section>
+
+      <section id="game-over-overlay" class="overlay">
+        <h2>Game Over</h2>
+        <p id="final-score">Score: 0</p>
+        <div class="overlay-actions">
+          <button id="retry-btn" type="button">Retry</button>
+          <a id="cta-link" class="cta-link" href="https://apps.apple.com/app/id6444492155" target="_blank" rel="noopener noreferrer">Download</a>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/game.js"></script>
+  </body>
+</html>
