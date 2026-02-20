@@ -9,22 +9,21 @@ const distDir = path.resolve(rootDir, "dist");
 
 const indexPath = path.resolve(rootDir, "index.html");
 const cssPath = path.resolve(rootDir, "src/style.css");
+const assetsPath = path.resolve(rootDir, "src/assets/extractedAssets.js");
 const logicPath = path.resolve(rootDir, "src/gameLogic.js");
 const gamePath = path.resolve(rootDir, "src/game.js");
 const outputPath = path.resolve(distDir, "playable.html");
 
-const [indexHtml, css, logic, game] = await Promise.all([
+const [indexHtml, css, assets, logic, game] = await Promise.all([
   fs.readFile(indexPath, "utf8"),
   fs.readFile(cssPath, "utf8"),
+  fs.readFile(assetsPath, "utf8"),
   fs.readFile(logicPath, "utf8"),
   fs.readFile(gamePath, "utf8")
 ]);
 
-const cleanedGame = game
-  .replace(/import\s*\{[\s\S]*?\}\s*from\s*"\.\/gameLogic\.js";\s*/, "")
-  .replace(/export\s+/g, "");
-
-const bundle = `${logic}\n\n${cleanedGame}`;
+const cleanedGame = game.replace(/^import\s+.+?from\s+"\.\/[^"]+";\s*$/gm, "");
+const bundle = `${assets}\n\n${logic}\n\n${cleanedGame}`.replace(/export\s+/g, "");
 
 let html = indexHtml;
 html = html.replace('<link rel="stylesheet" href="./src/style.css" />', `<style>\n${css}\n</style>`);

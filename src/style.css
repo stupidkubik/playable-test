@@ -65,6 +65,11 @@ canvas {
   margin: 0;
 }
 
+.fail-image {
+  width: min(240px, 60vw);
+  height: auto;
+}
+
 .overlay button,
 .cta-link {
   min-width: 150px;
@@ -87,4 +92,9 @@ canvas {
 .overlay-actions {
   display: grid;
   gap: 10px;
+}
+
+#start-btn[disabled] {
+  opacity: 0.6;
+  cursor: wait;
 }

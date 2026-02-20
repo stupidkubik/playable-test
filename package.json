@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "test": "node --test",
-    "build": "node scripts/build-single-html.mjs"
+    "extract:assets": "node scripts/extract-assets.mjs",
+    "build": "node scripts/extract-assets.mjs && node scripts/build-single-html.mjs"
   }
 }
