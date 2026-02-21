@@ -25,6 +25,24 @@ function findDataUri(source, variableName) {
 }
 
 function findFrame(source, frameName) {
+  const withTrimPattern = new RegExp(
+    `${escapeRegExp(frameName)}\\s*:\\s*\\{[\\s\\S]*?frame\\s*:\\s*\\{\\s*x\\s*:\\s*(\\d+)\\s*,\\s*y\\s*:\\s*(\\d+)\\s*,\\s*w\\s*:\\s*(\\d+)\\s*,\\s*h\\s*:\\s*(\\d+)\\s*\\}[\\s\\S]*?spriteSourceSize\\s*:\\s*\\{\\s*x\\s*:\\s*(\\d+)\\s*,\\s*y\\s*:\\s*(\\d+)\\s*,\\s*w\\s*:\\s*(\\d+)\\s*,\\s*h\\s*:\\s*(\\d+)\\s*\\}[\\s\\S]*?sourceSize\\s*:\\s*\\{\\s*w\\s*:\\s*(\\d+)\\s*,\\s*h\\s*:\\s*(\\d+)\\s*\\}[\\s\\S]*?\\}`
+  );
+
+  const withTrimMatch = source.match(withTrimPattern);
+  if (withTrimMatch) {
+    return {
+      x: Number(withTrimMatch[1]),
+      y: Number(withTrimMatch[2]),
+      w: Number(withTrimMatch[3]),
+      h: Number(withTrimMatch[4]),
+      sourceX: Number(withTrimMatch[5]),
+      sourceY: Number(withTrimMatch[6]),
+      sourceW: Number(withTrimMatch[9]),
+      sourceH: Number(withTrimMatch[10])
+    };
+  }
+
   const pattern = new RegExp(
     `${escapeRegExp(frameName)}\\s*:\\s*\\{\\s*frame\\s*:\\s*\\{\\s*x\\s*:\\s*(\\d+)\\s*,\\s*y\\s*:\\s*(\\d+)\\s*,\\s*w\\s*:\\s*(\\d+)\\s*,\\s*h\\s*:\\s*(\\d+)`
   );

@@ -71,6 +71,15 @@ function firstFrameOrFallback(frames, fallback) {
   return frames[0];
 }
 
+function frameSourceBox(frame) {
+  return {
+    sourceX: frame.sourceX ?? 0,
+    sourceY: frame.sourceY ?? 0,
+    sourceW: frame.sourceW ?? frame.w,
+    sourceH: frame.sourceH ?? frame.h
+  };
+}
+
 const playerBaseFrame = firstFrameOrFallback(
   ASSETS.frames.playerIdle,
   firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 })
@@ -78,6 +87,9 @@ const playerBaseFrame = firstFrameOrFallback(
 const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
+const playerRenderHeightMultiplier = 1.58;
+const enemyCollisionScale = 0.44;
+const enemyRenderScaleMultiplier = 1.12;
 
 const state = {
   mode: STATES.loading,
@@ -534,16 +546,16 @@ function spawnWarningLabel(x) {
 }
 
 function spawnEnemy() {
-  const frame = ASSETS.frames.enemyRun[Math.floor(Math.random() * ASSETS.frames.enemyRun.length)] || enemyBaseFrame;
-  const scale = 0.44;
+  const scale = enemyCollisionScale;
 
   const enemy = {
     id: allocateId(),
     x: GAME_WIDTH + GAME_WIDTH * 0.5,
     y: 0,
-    width: Math.round(frame.w * scale),
-    height: Math.round(frame.h * scale),
+    width: Math.round(enemyBaseFrame.w * scale),
+    height: Math.round(enemyBaseFrame.h * scale),
     animationOffset: Math.floor(Math.random() * ASSETS.frames.enemyRun.length),
+    scale,
     speed: SPEED_CONFIG.base,
     isTutorialEnemy: false
   };
@@ -1001,10 +1013,17 @@ function drawPlayer() {
     return;
   }
 
-  const drawWidth = state.player.width * 1.58;
-  const drawHeight = state.player.height * 1.58;
-  const drawX = state.player.x - (drawWidth - state.player.width) * 0.55;
-  const drawY = state.player.y - (drawHeight - state.player.height) * 0.66;
+  const box = frameSourceBox(frame);
+  const targetHeight = state.player.height * playerRenderHeightMultiplier;
+  const drawScale = targetHeight / box.sourceH;
+  const fullWidth = box.sourceW * drawScale;
+  const fullHeight = box.sourceH * drawScale;
+  const fullX = state.player.x + (state.player.width - fullWidth) * 0.5;
+  const fullY = state.player.y + (state.player.height - fullHeight);
+  const drawX = fullX + box.sourceX * drawScale;
+  const drawY = fullY + box.sourceY * drawScale;
+  const drawWidth = frame.w * drawScale;
+  const drawHeight = frame.h * drawScale;
 
   ctx.drawImage(
     spriteSheet,
@@ -1052,17 +1071,20 @@ function drawEnemies(elapsedSeconds) {
     }
 
     const frame = sequence[(Math.floor(elapsedSeconds * 10) + enemy.animationOffset) % sequence.length];
-    const drawX = enemy.x - 5;
-    const drawY = enemy.y - 10;
-    const drawWidth = enemy.width + 14;
-    const drawHeight = enemy.height + 18;
+    const box = frameSourceBox(frame);
+    const drawScale = (enemy.scale || enemyCollisionScale) * enemyRenderScaleMultiplier;
+    const fullWidth = box.sourceW * drawScale;
+    const fullHeight = box.sourceH * drawScale;
+    const fullX = enemy.x + (enemy.width - fullWidth) * 0.5;
+    const fullY = enemy.y + (enemy.height - fullHeight);
+    const mirroredSourceX = box.sourceW - box.sourceX - frame.w;
+    const drawX = fullX + mirroredSourceX * drawScale;
+    const drawY = fullY + box.sourceY * drawScale;
+    const drawWidth = frame.w * drawScale;
+    const drawHeight = frame.h * drawScale;
 
-    // Enemy sprites in the extracted atlas face opposite run direction, so mirror them.
-    ctx.save();
-    ctx.translate(drawX + drawWidth, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, 0, drawY, drawWidth, drawHeight);
-    ctx.restore();
+    // Enemy atlas frames face opposite run direction, so mirror source placement.
+    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, drawX, drawY, drawWidth, drawHeight);
   }
 }
 

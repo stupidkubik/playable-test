@@ -1,117 +1,99 @@
 # Runner Playable Clone
 
-Клон playable-креатива по референсу: `https://playbox.play.plbx.ai/playoff/runner`.
+Клон playable-креатива по референсу: [playbox.play.plbx.ai/playoff/runner](https://playbox.play.plbx.ai/playoff/runner).
 
-Текущий фокус: собрать проект, максимально близкий к референсу, на базе извлеченных ассетов из `file.html`.
+Проект собран как легкий vanilla JS-раннер с одним canvas, локальными тестами логики и сборкой в single HTML.
 
-## Текущее состояние
+## Быстрый старт
 
-- Базовый игровой цикл работает: бег, прыжок, препятствия, сбор монет, столкновения, конец рана.
-- Есть локальный сервер, тесты логики и сборка в единый HTML.
-- В проект уже подтянуты ключевые ассеты (спрайт персонажа, врага, часть UI, часть SFX), но еще не все ассеты из референса подключены в саму игру.
-
-## Структура проекта
-
-- `index.html` - точка входа.
-- `src/game.js` - рендер, игровой цикл, работа с ассетами и UI.
-- `src/gameLogic.js` - изолированная игровая логика для тестов.
-- `src/style.css` - стили интерфейса.
-- `src/assets/extractedAssets.js` - сгенерированный модуль с data-uri ассетами.
-- `scripts/extract-assets.mjs` - извлечение ассетов из `file.html`.
-- `scripts/dev-server.mjs` - локальный dev-сервер.
-- `scripts/build-single-html.mjs` - сборка single-file HTML.
-- `test/gameLogic.test.js` - тесты игровой логики.
-
-## Команды
+Требования: Node.js 18+.
 
 ```bash
+npm install
 npm run dev
 ```
 
 Локальный запуск: `http://localhost:5173`.
 
-```bash
-npm test
-```
+## Скрипты
 
-Запуск тестов.
+- `npm run dev` - локальный сервер разработки.
+- `npm test` - тесты базовой логики (`node --test`).
+- `npm run extract:assets` - генерация `src/assets/extractedAssets.js` из `file.html`.
+- `npm run build` - extraction + сборка `dist/playable.html`.
 
-```bash
-npm run extract:assets
-```
+## Структура
 
-Повторная генерация `src/assets/extractedAssets.js` из `file.html`.
+- `index.html` - корневая разметка и контейнеры экранов.
+- `src/game.js` - игровой цикл, рендер, события, UI, загрузка ассетов.
+- `src/gameLogic.js` - чистая логика (константы, hitbox-функции, экономика, spawn).
+- `src/style.css` - стили HUD, оверлеев, футера и эффектов.
+- `src/assets/extractedAssets.js` - сгенерированный модуль с data-uri и кадрами.
+- `scripts/extract-assets.mjs` - парсинг ассетов и frame-метаданных из `file.html`.
+- `scripts/build-single-html.mjs` - упаковка в один HTML.
+- `test/gameLogic.test.js` - unit-тесты логики.
 
-```bash
-npm run build
-```
+## Как работает игра
 
-Сборка финального файла: `dist/playable.html`.
+Основной цикл (`requestAnimationFrame`) в `src/game.js`:
 
-## Ассеты: уже в проекте
+1. Обновление скорости/дистанции.
+2. Спавн сущностей по `SPAWN_SEQUENCE`.
+3. Движение врагов, препятствий, коллектаблов.
+4. Проверка столкновений и апдейт HP/score.
+5. Рендер сцены, сущностей, HUD и оверлеев.
 
-Ниже список ассетов, которые уже экспортируются в `src/assets/extractedAssets.js` и используются в текущей версии проекта.
+Ключевые состояния (`STATES`):
 
-### Images
+- `loading`
+- `intro`
+- `running`
+- `paused` (tutorial pause)
+- `end_win`
+- `end_lose`
 
-- `playerSheet` (`_S`) - спрайтшит игрока.
-- `enemySheet` (`rq`) - спрайтшит врага.
-- `failBanner` (`Dq`) - баннер FAIL.
-- `tutorialHand` (`Yq`) - hand-иконка туториала.
-- `hudCounter` (`Oq`) - верхний счетчик.
-- `collectibleIcon` (`Mp`) - иконка основной монеты.
-- `backdropPortrait` (`Fl`) - фон футера (portrait).
-- `backdropLandscape` (`Kl`) - фон футера (landscape).
+## Рендер спрайтов и почему это важно
 
-### Audio
+В исходном референсе кадры в атласах **trimmed**: каждый кадр хранится не целиком, а вырезан по контенту.
 
-- `jump` (`Bq`)
-- `hit` (`Nq`)
-- `collect` (`wq`)
+Если игнорировать trim-метаданные и просто рисовать каждый кадр в фиксированную ширину/высоту, появляются артефакты:
 
-### Frames
+- визуальное сжатие/растяжение модели;
+- «плавание» головы и корпуса по горизонтали.
 
-- `playerRun`: 8 кадров (`run_0..run_7`)
-- `playerJump`: 10 кадров (`jump_0..jump_9`)
-- `playerHurt`: 5 кадров (`hurt_0..hurt_4`)
-- `enemyRun`: 14 кадров (`frame_0..frame_13`)
+В проекте это исправлено:
 
-## Ассеты: еще нужно подключить из референса
+- `extract-assets.mjs` теперь вытаскивает для каждого кадра:
+  - `sourceX`, `sourceY`
+  - `sourceW`, `sourceH`
+- рендер игрока и врага в `game.js` строится через virtual source box с якорем по низу/центру.
 
-Эти ассеты есть в `file.html`, но пока не интегрированы в `src/assets/extractedAssets.js` и/или текущий рендер.
+Результат: анимация заметно стабильнее и ближе к оригиналу.
 
-### Дополнительные SFX и музыка
+## Где крутить баланс и поведение
 
-- `hurt` (`Qq`)
-- `step` (`Pq`)
-- `win` (`Jq`)
-- `lose` (`Gq`)
-- `music` (`Wq`)
+Основные параметры в `src/gameLogic.js`:
 
-### Коллектаблы и UI-элементы
+- `PLAYER_CONFIG` - прыжок, масштаб, invincibility.
+- `SPEED_CONFIG` - скорость бега, замедление, tutorial distance.
+- `HITBOX_CONFIG` - размеры hitbox'ов.
+- `ECONOMY_CONFIG` - деньги/награды.
+- `SPAWN_SEQUENCE` - сценарий появления сущностей.
 
-- `Ep` - изображение PayPal-карточки (второй тип collectible).
-- `Lq` - иконка второго collectible (используется в fly-анимации).
-- `jq` - light/glow-эффект карточки.
+Визуальные рендер-параметры в `src/game.js`:
 
-### Сцена/окружение
+- `playerRenderHeightMultiplier`
+- `enemyCollisionScale`
+- `enemyRenderScaleMultiplier`
+- параметры окружения/фона/декора.
 
-- `gq` - большой фон сцены.
-- `Eq`, `Vq` - деревья.
-- `Mq` - фонарь.
-- `mq`, `Sq`, `qq` - кусты.
-- `nq`, `aq` - glow/overlay для сцены.
+## Текущий статус
 
-### Финишная зона/дорожка
+Сейчас реализовано:
 
-- `hq`, `cq`, `uq`, `dq`, `fq` - элементы паттерна и лент финишной линии.
+- стартовый экран, игровой ран, win/lose экраны;
+- HUD (жизни/счет), футер, CTA;
+- игрок, враг, препятствия, коллектаблы;
+- парралакс/сцена и базовая референс-логика.
 
-### Частицы/визуальные эффекты
-
-- `bq`, `yq`, `xq`, `vq`, `Cq`, `Uq` - набор мелких текстур частиц.
-
-## Что делать дальше
-
-1. Дорасширить `scripts/extract-assets.mjs` на все ассеты выше.
-2. Подключить их в `src/game.js` (фон, декор, второй collectible, частицы, музыка и недостающие SFX).
-3. После каждой итерации сверять поведение с референсом и прогонять `npm test`.
+Проект подходит как тестовый прототип под дальнейшую точную подгонку под референс.
