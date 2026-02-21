@@ -54,7 +54,13 @@ const assets = {
     hudCounter: findDataUri(source, "Oq"),
     collectibleIcon: findDataUri(source, "Mp"),
     backdropPortrait: findDataUri(source, "Fl"),
-    backdropLandscape: findDataUri(source, "Kl")
+    backdropLandscape: findDataUri(source, "Kl"),
+    sceneBackground: findDataUri(source, "gq"),
+    sceneTreeLeft: findDataUri(source, "Eq"),
+    sceneTreeRight: findDataUri(source, "Vq"),
+    sceneBushLarge: findDataUri(source, "qq"),
+    sceneBushSmall: findDataUri(source, "Sq"),
+    sceneLamp: findDataUri(source, "Mq")
   },
   audio: {
     jump: {
@@ -71,6 +77,7 @@ const assets = {
     }
   },
   frames: {
+    playerIdle: Array.from({ length: 18 }, (_, index) => findFrame(source, `idle_${index}`)),
     playerRun: Array.from({ length: 8 }, (_, index) => findFrame(source, `run_${index}`)),
     playerJump: Array.from({ length: 10 }, (_, index) => findFrame(source, `jump_${index}`)),
     playerHurt: Array.from({ length: 5 }, (_, index) => findFrame(source, `hurt_${index}`)),

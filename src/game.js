@@ -26,6 +26,7 @@ const ctx = canvas.getContext("2d");
 const startOverlay = document.querySelector("#start-overlay");
 const endOverlay = document.querySelector("#end-overlay");
 const startCopy = document.querySelector("#start-copy");
+const introHand = document.querySelector("#intro-hand");
 const endTitle = document.querySelector("#end-title");
 const endSubtitle = document.querySelector("#end-subtitle");
 const countdownContainer = document.querySelector("#countdown-container");
@@ -41,6 +42,8 @@ const hpDisplay = document.querySelector("#hp-display");
 const scoreDisplay = document.querySelector("#score-display");
 const hudCounterImage = document.querySelector("#hud-counter-image");
 const ctaButton = document.querySelector("#cta-button");
+const gameFooter = document.querySelector("#game-footer");
+const footerCta = document.querySelector("#footer-cta");
 
 const startBtn = document.querySelector("#start-btn");
 const CTA_URL = "https://apps.apple.com/app/id6444492155";
@@ -68,7 +71,10 @@ function firstFrameOrFallback(frames, fallback) {
   return frames[0];
 }
 
-const playerBaseFrame = firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 });
+const playerBaseFrame = firstFrameOrFallback(
+  ASSETS.frames.playerIdle,
+  firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 })
+);
 const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
 
 const state = {
@@ -119,6 +125,8 @@ const state = {
   countdownIntervalId: null,
   balanceAnimationId: null,
   failTimeoutId: null,
+  introBlinkNextMs: 0,
+  introBlinkUntilMs: 0,
   nextId: 1
 };
 
@@ -143,6 +151,10 @@ function hideOverlays() {
   startOverlay.classList.remove("overlay-visible");
   endOverlay.classList.remove("overlay-visible");
   failOverlay?.classList.add("hidden");
+}
+
+function setFooterVisible(visible) {
+  gameFooter?.classList.toggle("hidden", !visible);
 }
 
 function showIntroOverlay(message = "Tap to start earning!") {
@@ -281,6 +293,7 @@ function showFailAnimation(totalReward) {
 
 function showEndScreen(isWin, totalReward) {
   clearEndTimers();
+  setFooterVisible(false);
 
   if (endTitle) {
     endTitle.textContent = isWin ? "Congratulations!" : "You didn't make it!";
@@ -392,6 +405,15 @@ async function loadResources() {
   if (lightsEffect) {
     lightsEffect.src = state.resources.images.lightsEffect?.src || "";
   }
+  if (introHand) {
+    introHand.src = state.resources.images.tutorialHand?.src || "";
+  }
+  if (gameFooter) {
+    const portrait = state.resources.images.backdropPortrait?.src || "";
+    const landscape = state.resources.images.backdropLandscape?.src || portrait;
+    gameFooter.style.setProperty("--footer-portrait", `url(${portrait})`);
+    gameFooter.style.setProperty("--footer-landscape", `url(${landscape})`);
+  }
 }
 
 function playSound(key) {
@@ -438,8 +460,11 @@ function resetWorld() {
 
   state.ui.score = Number.NaN;
   state.ui.hp = -1;
+  state.introBlinkUntilMs = 0;
+  state.introBlinkNextMs = performance.now() + 900;
 
   hideOverlays();
+  setFooterVisible(true);
   ctaButton?.classList.remove("lose");
   countdownContainer?.classList.remove("hidden");
   resetEndScreenAnimations();
@@ -648,6 +673,14 @@ function updatePlayer(deltaSeconds, deltaMs) {
       state.player.blinkAccumulatorMs = 0;
     }
   }
+
+  if (state.mode === STATES.intro) {
+    const now = performance.now();
+    if (now >= state.introBlinkNextMs) {
+      state.introBlinkUntilMs = now + 140;
+      state.introBlinkNextMs = now + 2100 + Math.random() * 1700;
+    }
+  }
 }
 
 function updateEntities(deltaSeconds) {
@@ -793,7 +826,19 @@ function updateRunning(deltaSeconds, deltaMs) {
     }
   }
 
-  state.skyOffset = (state.skyOffset + state.currentSpeed * 0.08 * deltaSeconds) % GAME_WIDTH;
+  const scene = state.resources.images.sceneBackground;
+  if (scene) {
+    const sceneScale = GROUND_Y / scene.height;
+    const sceneDrawWidth = scene.width * sceneScale;
+    const sceneCycle = Math.max(1, sceneDrawWidth * 2);
+
+    state.skyOffset += state.currentSpeed * deltaSeconds;
+    if (state.skyOffset > 10_000_000) {
+      state.skyOffset %= sceneCycle;
+    }
+  } else {
+    state.skyOffset = (state.skyOffset + state.currentSpeed * 0.08 * deltaSeconds) % GAME_WIDTH;
+  }
   state.groundOffset = (state.groundOffset + state.currentSpeed * deltaSeconds) % 120;
   state.distanceTraveled += state.currentSpeed * deltaSeconds;
 
@@ -811,6 +856,7 @@ function updateRunning(deltaSeconds, deltaMs) {
 }
 
 function currentPlayerFrame() {
+  const idleFrames = ASSETS.frames.playerIdle || ASSETS.frames.playerRun;
   const runFrames = ASSETS.frames.playerRun;
   const jumpFrames = ASSETS.frames.playerJump;
   const hurtFrames = ASSETS.frames.playerHurt;
@@ -827,16 +873,40 @@ function currentPlayerFrame() {
     return runFrames[Math.floor(state.player.animationTime * 12) % runFrames.length];
   }
 
+  if (state.mode === STATES.intro) {
+    return idleFrames[0];
+  }
+
   return runFrames[0];
 }
 
 function drawSky() {
-  const backdrop = state.resources.images.backdropPortrait;
+  const scene = state.resources.images.sceneBackground;
+  if (scene) {
+    const scale = GROUND_Y / scene.height;
+    const drawWidth = scene.width * scale;
 
-  if (backdrop) {
-    const x = -state.skyOffset;
-    ctx.drawImage(backdrop, x, 0, GAME_WIDTH, GROUND_Y);
-    ctx.drawImage(backdrop, x + GAME_WIDTH, 0, GAME_WIDTH, GROUND_Y);
+    const tileIndexStart = Math.floor(state.skyOffset / drawWidth);
+    const wrappedOffset = ((state.skyOffset % drawWidth) + drawWidth) % drawWidth;
+    const tileStartX = -wrappedOffset;
+    const tileCount = Math.ceil(GAME_WIDTH / drawWidth) + 2;
+
+    for (let i = 0; i < tileCount; i += 1) {
+      const tileIndex = tileIndexStart + i;
+      const tileX = tileStartX + i * drawWidth;
+      const mirrored = tileIndex % 2 !== 0;
+
+      if (mirrored) {
+        ctx.save();
+        ctx.translate(tileX + drawWidth, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(scene, 0, 0, drawWidth, GROUND_Y);
+        ctx.restore();
+      } else {
+        ctx.drawImage(scene, tileX, 0, drawWidth, GROUND_Y);
+      }
+    }
+
     return;
   }
 
@@ -847,7 +917,61 @@ function drawSky() {
   ctx.fillRect(0, 0, GAME_WIDTH, GROUND_Y);
 }
 
+function drawSceneDecor() {
+  if (!state.resources.images.sceneBackground) {
+    return;
+  }
+
+  const treeLeft = state.resources.images.sceneTreeLeft;
+  const treeRight = state.resources.images.sceneTreeRight;
+  const bushLarge = state.resources.images.sceneBushLarge;
+  const bushSmall = state.resources.images.sceneBushSmall;
+  const lamp = state.resources.images.sceneLamp;
+
+  const scene = state.resources.images.sceneBackground;
+  const sceneScale = GROUND_Y / scene.height;
+  const sceneDrawWidth = scene.width * sceneScale;
+  const tileIndexStart = Math.floor(state.skyOffset / sceneDrawWidth);
+  const wrappedOffset = ((state.skyOffset % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth;
+  const tileStartX = -wrappedOffset;
+  const tileCount = Math.ceil(GAME_WIDTH / sceneDrawWidth) + 2;
+
+  function drawDecor(image, localX, localY, width, height, tileX, mirrored) {
+    if (!image) {
+      return;
+    }
+
+    if (!mirrored) {
+      ctx.drawImage(image, tileX + localX, localY, width, height);
+      return;
+    }
+
+    const mirroredX = tileX + (sceneDrawWidth - localX - width);
+    ctx.save();
+    ctx.translate(mirroredX + width, localY);
+    ctx.scale(-1, 1);
+    ctx.drawImage(image, 0, 0, width, height);
+    ctx.restore();
+  }
+
+  for (let i = 0; i < tileCount; i += 1) {
+    const tileIndex = tileIndexStart + i;
+    const tileX = tileStartX + i * sceneDrawWidth;
+    const mirrored = tileIndex % 2 !== 0;
+
+    drawDecor(treeLeft, -120, -40, 430, 340, tileX, mirrored);
+    drawDecor(treeRight, GAME_WIDTH - 255, -40, 335, 340, tileX, mirrored);
+    drawDecor(lamp, GAME_WIDTH * 0.495, 140, 62, 250, tileX, mirrored);
+    drawDecor(bushSmall, -30, GROUND_Y - 110, 165, 165, tileX, mirrored);
+    drawDecor(bushLarge, GAME_WIDTH - 250, GROUND_Y - 125, 220, 180, tileX, mirrored);
+  }
+}
+
 function drawGround() {
+  if (state.resources.images.sceneBackground) {
+    return;
+  }
+
   ctx.fillStyle = "#1f2f3e";
   ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
 
@@ -888,6 +1012,27 @@ function drawPlayer() {
     drawWidth,
     drawHeight
   );
+
+  if (state.mode === STATES.intro && performance.now() <= state.introBlinkUntilMs) {
+    const eyeY = drawY + drawHeight * 0.35;
+    const leftEyeX = drawX + drawWidth * 0.47;
+    const rightEyeX = drawX + drawWidth * 0.59;
+    const eyeW = drawWidth * 0.055;
+
+    ctx.strokeStyle = "#2b180f";
+    ctx.lineWidth = Math.max(2, drawWidth * 0.012);
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(leftEyeX - eyeW * 0.45, eyeY);
+    ctx.lineTo(leftEyeX + eyeW * 0.45, eyeY + eyeW * 0.08);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(rightEyeX - eyeW * 0.45, eyeY);
+    ctx.lineTo(rightEyeX + eyeW * 0.45, eyeY + eyeW * 0.08);
+    ctx.stroke();
+  }
 }
 
 function drawEnemies(elapsedSeconds) {
@@ -975,7 +1120,7 @@ function drawCollectibles(elapsedSeconds) {
       ctx.fill();
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "700 26px Trebuchet MS";
+      ctx.font = "700 26px GameFont";
       ctx.fillText("P", collectible.x + collectible.width * 0.38, y + collectible.height * 0.46);
       continue;
     }
@@ -1054,7 +1199,7 @@ function drawWarnings(elapsedSeconds) {
     ctx.stroke();
 
     ctx.fillStyle = "#ff1f16";
-    ctx.font = "900 30px Trebuchet MS";
+    ctx.font = "900 30px GameFont";
     ctx.textAlign = "center";
     ctx.fillText("AVOID!", warning.x, warning.y + 11);
     ctx.textAlign = "start";
@@ -1071,7 +1216,7 @@ function drawTutorialHint() {
   ctx.fill();
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "700 34px Trebuchet MS";
+  ctx.font = "700 34px GameFont";
   ctx.textAlign = "center";
   ctx.fillText("Jump to avoid enemies", GAME_WIDTH * 0.5, 203);
   ctx.textAlign = "start";
@@ -1098,6 +1243,7 @@ function render(elapsedSeconds) {
   syncGameHeader();
 
   drawSky();
+  drawSceneDecor();
   drawGround();
   drawCollectibles(elapsedSeconds);
   drawObstacles(elapsedSeconds);
@@ -1106,7 +1252,6 @@ function render(elapsedSeconds) {
   drawWarnings(elapsedSeconds);
   drawPlayer();
   drawTutorialHint();
-  drawIntroHint();
 }
 
 function update(deltaSeconds, deltaMs) {
@@ -1171,6 +1316,10 @@ startBtn.addEventListener("click", () => {
 });
 
 ctaButton?.addEventListener("click", () => {
+  window.open(CTA_URL, "_blank", "noopener,noreferrer");
+});
+
+footerCta?.addEventListener("click", () => {
   window.open(CTA_URL, "_blank", "noopener,noreferrer");
 });
 
