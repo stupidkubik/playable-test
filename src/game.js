@@ -76,6 +76,8 @@ const playerBaseFrame = firstFrameOrFallback(
   firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 })
 );
 const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
+const obstacleBaseFrame = { w: 119, h: 135 };
+const obstacleBaseScale = 0.8;
 
 const state = {
   mode: STATES.loading,
@@ -552,12 +554,15 @@ function spawnEnemy() {
 }
 
 function spawnObstacle() {
+  const width = Math.round(obstacleBaseFrame.w * obstacleBaseScale);
+  const height = Math.round(obstacleBaseFrame.h * obstacleBaseScale);
+
   const obstacle = {
     id: allocateId(),
     x: GAME_WIDTH + GAME_WIDTH * 0.5,
-    width: 78,
-    height: 128,
-    y: GROUND_Y - 128,
+    width,
+    height,
+    y: GROUND_Y - height,
     pulseSeed: Math.random() * Math.PI * 2,
     speed: SPEED_CONFIG.base
   };
@@ -1047,17 +1052,17 @@ function drawEnemies(elapsedSeconds) {
     }
 
     const frame = sequence[(Math.floor(elapsedSeconds * 10) + enemy.animationOffset) % sequence.length];
-    ctx.drawImage(
-      spriteSheet,
-      frame.x,
-      frame.y,
-      frame.w,
-      frame.h,
-      enemy.x - 5,
-      enemy.y - 10,
-      enemy.width + 14,
-      enemy.height + 18
-    );
+    const drawX = enemy.x - 5;
+    const drawY = enemy.y - 10;
+    const drawWidth = enemy.width + 14;
+    const drawHeight = enemy.height + 18;
+
+    // Enemy sprites in the extracted atlas face opposite run direction, so mirror them.
+    ctx.save();
+    ctx.translate(drawX + drawWidth, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, 0, drawY, drawWidth, drawHeight);
+    ctx.restore();
   }
 }
 
@@ -1076,28 +1081,38 @@ function roundedRect(x, y, width, height, radius) {
 }
 
 function drawObstacles(elapsedSeconds) {
+  const obstacleSprite = state.resources.images.obstacleSprite;
+  const obstacleGlow = state.resources.images.obstacleGlow;
+
   for (const obstacle of state.obstacles) {
+    if (obstacleGlow) {
+      const pulse = 1 + Math.sin(elapsedSeconds * 3 + obstacle.pulseSeed) * 0.1;
+      const glowWidth = obstacle.width * pulse;
+      const glowHeight = obstacle.height * pulse;
+      const glowX = obstacle.x - (glowWidth - obstacle.width) * 0.5;
+      const glowY = obstacle.y - (glowHeight - obstacle.height);
+
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(obstacleGlow, glowX, glowY, glowWidth, glowHeight);
+      ctx.restore();
+    }
+
+    if (obstacleSprite) {
+      ctx.drawImage(obstacleSprite, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      continue;
+    }
+
+    // Fallback shape if extracted obstacle sprite is unavailable.
     const pulse = 1 + Math.sin(elapsedSeconds * 4 + obstacle.pulseSeed) * 0.05;
     const width = obstacle.width * pulse;
     const height = obstacle.height * pulse;
     const x = obstacle.x - (width - obstacle.width) * 0.5;
     const y = obstacle.y - (height - obstacle.height);
 
-    const glow = ctx.createLinearGradient(0, y, 0, y + height);
-    glow.addColorStop(0, "#ffd560");
-    glow.addColorStop(1, "#f3933d");
-
-    ctx.fillStyle = "rgba(255, 200, 64, 0.26)";
-    roundedRect(x - 10, y - 8, width + 20, height + 16, 18);
-    ctx.fill();
-
-    ctx.fillStyle = glow;
+    ctx.fillStyle = "rgba(255, 200, 64, 0.32)";
     roundedRect(x, y, width, height, 14);
     ctx.fill();
-
-    ctx.strokeStyle = "rgba(255, 128, 36, 0.86)";
-    ctx.lineWidth = 4;
-    ctx.stroke();
   }
 }
 

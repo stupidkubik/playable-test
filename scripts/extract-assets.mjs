@@ -60,7 +60,9 @@ const assets = {
     sceneTreeRight: findDataUri(source, "Vq"),
     sceneBushLarge: findDataUri(source, "qq"),
     sceneBushSmall: findDataUri(source, "Sq"),
-    sceneLamp: findDataUri(source, "Mq")
+    sceneLamp: findDataUri(source, "Mq"),
+    obstacleSprite: findDataUri(source, "nq"),
+    obstacleGlow: findDataUri(source, "aq")
   },
   audio: {
     jump: {
