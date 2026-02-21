@@ -1,11 +1,9 @@
 :root {
-  --bg-top: #c1e8ff;
-  --bg-bottom: #70b8ec;
-  --ground: #2d3f50;
-  --panel: rgba(7, 24, 41, 0.88);
-  --text: #f6fbff;
-  --accent: #ffce47;
-  --accent-hover: #f8bd16;
+  --text: #f7fbff;
+  --panel: rgba(9, 24, 40, 0.88);
+  --panel-strong: rgba(8, 18, 31, 0.93);
+  --accent: #ffd463;
+  --accent-hover: #ffc032;
 }
 
 * {
@@ -22,25 +20,86 @@ body {
   display: grid;
   place-items: center;
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at 20% 0%, #eff9ff 0%, #b8ddff 45%, #76abda 100%);
   color: var(--text);
+  background:
+    radial-gradient(circle at 8% 0%, #e9f5ff 0%, rgba(233, 245, 255, 0.5) 24%, transparent 58%),
+    radial-gradient(circle at 90% 6%, #c5e3ff 0%, rgba(197, 227, 255, 0.4) 24%, transparent 55%),
+    linear-gradient(180deg, #9dc7ec 0%, #6fa3d2 52%, #567ba1 100%);
 }
 
 .app-shell {
   position: relative;
-  width: min(100vw, 540px);
-  height: min(100vh, 960px);
-  max-height: 960px;
+  width: min(100vw, 430px);
+  aspect-ratio: 9 / 16;
+  max-height: 100vh;
   overflow: hidden;
   border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.33);
+}
+
+.game-header {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.hp-container {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(8, 24, 39, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.heart {
+  font-size: 24px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.heart.empty {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+.paypal-counter {
+  position: relative;
+  min-width: 164px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.paypal-counter-image {
+  width: min(46vw, 190px);
+  max-width: 190px;
+  height: auto;
+  display: block;
+}
+
+.paypal-counter-amount {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-52%);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 canvas {
   display: block;
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 70%, var(--ground) 70%, var(--ground) 100%);
+  background: linear-gradient(180deg, #a9d7f7 0%, #78b2df 66%, #2b4255 66%, #2b4255 100%);
 }
 
 .overlay {
@@ -49,52 +108,337 @@ canvas {
   display: none;
   align-content: center;
   justify-items: center;
-  gap: 10px;
-  padding: 24px;
+  gap: 12px;
   text-align: center;
-  background: linear-gradient(180deg, rgba(8, 18, 30, 0.72), rgba(8, 18, 30, 0.9));
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(7, 17, 30, 0.74), rgba(7, 17, 30, 0.93));
 }
 
 .overlay-visible {
   display: grid;
 }
 
-.overlay h1,
-.overlay h2,
-.overlay p {
+#start-overlay h1,
+#start-overlay h2 {
+  letter-spacing: 0.06em;
+}
+
+#start-overlay h1,
+#start-overlay h2,
+#start-overlay p {
   margin: 0;
 }
 
-.fail-image {
-  width: min(240px, 60vw);
-  height: auto;
-}
-
-.overlay button,
-.cta-link {
-  min-width: 150px;
+#start-overlay button {
+  min-width: 164px;
   border: 0;
   border-radius: 999px;
-  padding: 12px 20px;
+  padding: 13px 22px;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
   background: var(--accent);
   color: #1f1f1f;
   text-decoration: none;
   cursor: pointer;
 }
 
-.overlay button:hover,
-.cta-link:hover {
+#start-overlay button:hover {
   background: var(--accent-hover);
 }
 
-.overlay-actions {
-  display: grid;
-  gap: 10px;
+#end-overlay {
+  background: transparent;
+  padding: 0;
+  z-index: 300;
+  overflow: visible;
+}
+
+#end-overlay.overlay-visible {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.end-content {
+  text-align: center;
+  color: #fff;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 90vh;
+  overflow: visible;
+}
+
+.end-title {
+  font-size: 32px;
+  font-weight: 900;
+  margin: 0 0 10px;
+  text-shadow:
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000,
+    2px 2px 0 #000,
+    0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.end-subtitle {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 30px;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.paypal-card-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 20px;
+  overflow: visible;
+}
+
+.lights-effect {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 400px;
+  max-width: 100vw;
+  height: auto;
+  transform: translate(-50%, -50%) scale(1.5);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.lights-effect.animate-lights {
+  animation:
+    lights-fade-in 0.5s ease-out forwards,
+    lights-rotate 8s linear 0.3s infinite;
+}
+
+@keyframes lights-fade-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.5);
+  }
+}
+
+@keyframes lights-rotate {
+  0% {
+    transform: translate(-50%, -50%) scale(1.5) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5) rotate(360deg);
+  }
+}
+
+.paypal-card-container {
+  position: relative;
+  display: inline-block;
+  z-index: 1;
+  transform: scale(0);
+}
+
+.paypal-card-container.animate-scale {
+  animation: card-scale-bounce 0.6s cubic-bezier(0.34, 1, 0.64, 1) forwards;
+}
+
+@keyframes card-scale-bounce {
+  0% {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.paypal-card-image {
+  width: 280px;
+  max-width: 70vw;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.paypal-card-amount {
+  position: absolute;
+  bottom: 30px;
+  right: 16px;
+  font-size: clamp(24px, 10vw, 48px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow:
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000,
+    2px 2px 0 #000,
+    0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.countdown {
+  margin-bottom: 20px;
+}
+
+.countdown-time {
+  font-size: 36px;
+  font-weight: 700;
+  display: block;
+}
+
+.countdown-text {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.cta-button {
+  background: linear-gradient(180deg, #ffe44d, #ffb830, #ff9500);
+  border: 3px solid #e07800;
+  color: #fff;
+  font-size: clamp(14px, 9vw, 26px);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 16px 48px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px #c06000, 0 6px 8px rgba(0, 0, 0, 0.3), inset 0 2px rgba(255, 255, 255, 0.4);
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 2px 3px rgba(0, 0, 0, 0.3);
+  animation: pulse-button 1s ease-in-out infinite;
+}
+
+.cta-button.lose {
+  background: linear-gradient(180deg, #ff6b6b, #e44, #c22);
+  border-color: #a11;
+  box-shadow: 0 4px #000, 0 6px 8px rgba(0, 0, 0, 0.3), inset 0 2px rgba(255, 255, 255, 0.4);
+}
+
+@keyframes pulse-button {
+  0%,
+  100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.fail-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 350;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.fail-image {
+  width: 60vmin;
+  height: 60vmin;
+  max-width: 400px;
+  max-height: 400px;
+  animation: fail-scale-in 0.8s ease-out forwards;
+}
+
+@keyframes fail-scale-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 #start-btn[disabled] {
   opacity: 0.6;
   cursor: wait;
+}
+
+@media (max-height: 560px), (orientation: landscape) {
+  .end-content {
+    gap: 10px;
+    padding: 10px 20px;
+    max-height: 100vh;
+  }
+
+  .end-title {
+    font-size: clamp(18px, 4vh, 28px);
+    margin-bottom: 5px;
+  }
+
+  .end-subtitle {
+    font-size: clamp(12px, 2.5vh, 16px);
+    margin-bottom: 10px;
+  }
+
+  .paypal-card-wrapper {
+    margin-bottom: 10px;
+  }
+
+  .lights-effect {
+    width: 250px;
+  }
+
+  .paypal-card-image {
+    width: auto;
+    height: clamp(80px, 25vh, 150px);
+    max-width: 50vw;
+  }
+
+  .paypal-card-amount {
+    font-size: clamp(14px, 6vh, 24px);
+    bottom: 15px;
+    right: 10px;
+  }
+
+  .countdown {
+    margin-bottom: 10px;
+  }
+
+  .countdown-time {
+    font-size: clamp(20px, 5vh, 32px);
+  }
+
+  .countdown-text {
+    font-size: clamp(10px, 2vh, 14px);
+  }
+
+  .cta-button {
+    font-size: clamp(12px, 2.5vh, 18px);
+    padding: 10px 30px;
+  }
+
+  .fail-image {
+    width: 40vmin;
+    height: 40vmin;
+    max-width: 250px;
+    max-height: 250px;
+  }
 }

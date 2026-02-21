@@ -8,23 +8,46 @@
   </head>
   <body>
     <main class="app-shell">
-      <canvas id="game" width="540" height="960" aria-label="Runner game"></canvas>
+      <canvas id="game" width="720" height="1280" aria-label="Runner game"></canvas>
+      <div class="game-header">
+        <div class="hp-container" id="hp-display"></div>
+        <div class="paypal-counter" id="paypal-counter">
+          <img id="hud-counter-image" src="" alt="PayPal Balance" class="paypal-counter-image" />
+          <span class="paypal-counter-amount" id="score-display">$0</span>
+        </div>
+      </div>
 
       <section id="start-overlay" class="overlay overlay-visible">
-        <h1>Play Runner</h1>
-        <p id="start-copy">Tap or press Space to jump over obstacles.</p>
-        <button id="start-btn" type="button">Start</button>
+        <h1>PLAY</h1>
+        <p id="start-copy">Tap to start earning!</p>
+        <button id="start-btn" type="button">PLAY</button>
       </section>
 
-      <section id="game-over-overlay" class="overlay">
-        <img id="fail-image" class="fail-image" alt="Fail" />
-        <h2>Game Over</h2>
-        <p id="final-score">Score: 0</p>
-        <div class="overlay-actions">
-          <button id="retry-btn" type="button">Retry</button>
-          <a id="cta-link" class="cta-link" href="https://apps.apple.com/app/id6444492155" target="_blank" rel="noopener noreferrer">Download</a>
+      <section id="end-overlay" class="overlay">
+        <div class="end-content">
+          <h1 id="end-title" class="end-title">Congratulations!</h1>
+          <h2 id="end-subtitle" class="end-subtitle">Choose your reward!</h2>
+
+          <div id="paypal-card-wrapper" class="paypal-card-wrapper">
+            <img id="lights-effect" src="" class="lights-effect" alt="" />
+            <div class="paypal-card-container">
+              <img id="paypal-card-image" src="" class="paypal-card-image" alt="PayPal" />
+              <span id="end-amount" class="paypal-card-amount">$0.00</span>
+            </div>
+          </div>
+
+          <div id="countdown-container" class="countdown">
+            <span id="countdown-time" class="countdown-time">00:58</span>
+            <span class="countdown-text">Next payment in one minute</span>
+          </div>
+
+          <button id="cta-button" class="cta-button" type="button">Install and Earn</button>
         </div>
       </section>
+
+      <div id="fail-overlay" class="fail-overlay hidden">
+        <img id="fail-image" class="fail-image" alt="Fail" />
+      </div>
     </main>
 
     <script type="module" src="./src/game.js"></script>
