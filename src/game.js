@@ -88,8 +88,13 @@ const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h:
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
 const playerRenderHeightMultiplier = 1.58;
+const playerIdleIntroFps = 9;
 const enemyCollisionScale = 0.44;
 const enemyRenderScaleMultiplier = 1.12;
+const finishPoleLeftScale = 1.8;
+const finishPoleRightScale = 1.35;
+const finishTapeScaleX = 1.8;
+const finishTapeScaleY = 1;
 
 const state = {
   mode: STATES.loading,
@@ -135,12 +140,11 @@ const state = {
   },
   rafId: 0,
   lastFrameTime: 0,
+  lastStepSoundAt: 0,
   winTimeoutId: null,
   countdownIntervalId: null,
   balanceAnimationId: null,
   failTimeoutId: null,
-  introBlinkNextMs: 0,
-  introBlinkUntilMs: 0,
   nextId: 1
 };
 
@@ -340,10 +344,11 @@ function createImage(dataUri) {
   });
 }
 
-function createAudio(source, volume) {
+function createAudio(source, volume, loop = false) {
   const audio = new Audio(source);
   audio.preload = "auto";
   audio.volume = volume;
+  audio.loop = loop;
   return audio;
 }
 
@@ -399,13 +404,25 @@ async function loadResources() {
   );
 
   state.resources.images = Object.fromEntries(loaded);
+
+  const localPaypalCard = await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.paypalCard);
+  const localLightsEffect = await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.lightsEffect);
+
   state.resources.images.paypalCard =
-    (await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.paypalCard)) || null;
+    state.resources.images.paypalCardOriginal ||
+    localPaypalCard ||
+    state.resources.images.collectiblePaypalCard ||
+    null;
+  state.resources.images.paypalCardCollectible =
+    state.resources.images.collectiblePaypalCard || state.resources.images.paypalCard;
   state.resources.images.lightsEffect =
-    (await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.lightsEffect)) || null;
+    state.resources.images.lightsEffectOriginal || localLightsEffect || null;
 
   state.resources.audio = Object.fromEntries(
-    Object.entries(ASSETS.audio).map(([key, value]) => [key, createAudio(value.url, value.volume)])
+    Object.entries(ASSETS.audio).map(([key, value]) => [
+      key,
+      createAudio(value.url, value.volume, value.loop || false)
+    ])
   );
 
   failImage.src = state.resources.images.failBanner.src;
@@ -442,6 +459,32 @@ function playSound(key) {
   });
 }
 
+function playMusic() {
+  const music = state.resources.audio.music;
+  if (!music) {
+    return;
+  }
+
+  if (!music.paused && !music.ended) {
+    return;
+  }
+
+  music.currentTime = 0;
+  music.play().catch(() => {
+    // Browser autoplay may block audio until first interaction.
+  });
+}
+
+function stopMusic() {
+  const music = state.resources.audio.music;
+  if (!music) {
+    return;
+  }
+
+  music.pause();
+  music.currentTime = 0;
+}
+
 function resetWorld() {
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);
@@ -461,6 +504,7 @@ function resetWorld() {
   state.currentSpeed = SPEED_CONFIG.base;
   state.isDecelerating = false;
   state.finishLineSpawned = false;
+  state.lastStepSoundAt = 0;
   state.skyOffset = 0;
   state.groundOffset = 0;
 
@@ -474,8 +518,7 @@ function resetWorld() {
 
   state.ui.score = Number.NaN;
   state.ui.hp = -1;
-  state.introBlinkUntilMs = 0;
-  state.introBlinkNextMs = performance.now() + 900;
+  stopMusic();
 
   hideOverlays();
   setFooterVisible(true);
@@ -495,6 +538,7 @@ function startRun() {
   state.mode = STATES.running;
   state.isRunning = true;
   state.jumpingEnabled = false;
+  playMusic();
 }
 
 function startJump() {
@@ -519,6 +563,8 @@ function handleWin() {
   state.isRunning = false;
   state.mode = STATES.endWin;
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
+  stopMusic();
+  playSound("win");
   showEndScreen(true, state.score);
 }
 
@@ -526,7 +572,8 @@ function handleLose() {
   state.isRunning = false;
   state.mode = STATES.endLose;
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
-  playSound("hit");
+  stopMusic();
+  playSound("lose");
   showEndScreen(false, state.score);
 }
 
@@ -606,8 +653,8 @@ function spawnFinishLine() {
   state.finishLine = {
     id: allocateId(),
     x: GAME_WIDTH + GAME_WIDTH * 0.5,
-    y: GROUND_Y - 180,
-    width: 180,
+    y: GROUND_Y - 182,
+    width: 240,
     height: 210,
     speed: SPEED_CONFIG.base,
     tapeBroken: false,
@@ -691,13 +738,6 @@ function updatePlayer(deltaSeconds, deltaMs) {
     }
   }
 
-  if (state.mode === STATES.intro) {
-    const now = performance.now();
-    if (now >= state.introBlinkNextMs) {
-      state.introBlinkUntilMs = now + 140;
-      state.introBlinkNextMs = now + 2100 + Math.random() * 1700;
-    }
-  }
 }
 
 function updateEntities(deltaSeconds) {
@@ -749,13 +789,15 @@ function hitPlayer() {
   }
 
   state.hp -= 1;
+  if (state.hp <= 0) {
+    handleLose();
+    return;
+  }
+
   state.player.invincibilityMs = PLAYER_CONFIG.invincibilityMs;
   state.player.blinkVisible = false;
   playSound("hit");
-
-  if (state.hp <= 0) {
-    handleLose();
-  }
+  playSound("hurt");
 }
 
 function collectItem(item) {
@@ -859,6 +901,16 @@ function updateRunning(deltaSeconds, deltaMs) {
   state.groundOffset = (state.groundOffset + state.currentSpeed * deltaSeconds) % 120;
   state.distanceTraveled += state.currentSpeed * deltaSeconds;
 
+  const now = performance.now();
+  if (
+    state.currentSpeed > 200 &&
+    !state.player.isJumping &&
+    now - state.lastStepSoundAt >= 220
+  ) {
+    playSound("step");
+    state.lastStepSoundAt = now;
+  }
+
   checkSpawns();
   updateEntities(deltaSeconds);
   checkTutorialTrigger();
@@ -891,7 +943,7 @@ function currentPlayerFrame() {
   }
 
   if (state.mode === STATES.intro) {
-    return idleFrames[0];
+    return idleFrames[Math.floor(state.player.animationTime * playerIdleIntroFps) % idleFrames.length];
   }
 
   return runFrames[0];
@@ -1036,27 +1088,6 @@ function drawPlayer() {
     drawWidth,
     drawHeight
   );
-
-  if (state.mode === STATES.intro && performance.now() <= state.introBlinkUntilMs) {
-    const eyeY = drawY + drawHeight * 0.35;
-    const leftEyeX = drawX + drawWidth * 0.47;
-    const rightEyeX = drawX + drawWidth * 0.59;
-    const eyeW = drawWidth * 0.055;
-
-    ctx.strokeStyle = "#2b180f";
-    ctx.lineWidth = Math.max(2, drawWidth * 0.012);
-    ctx.lineCap = "round";
-
-    ctx.beginPath();
-    ctx.moveTo(leftEyeX - eyeW * 0.45, eyeY);
-    ctx.lineTo(leftEyeX + eyeW * 0.45, eyeY + eyeW * 0.08);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(rightEyeX - eyeW * 0.45, eyeY);
-    ctx.lineTo(rightEyeX + eyeW * 0.45, eyeY + eyeW * 0.08);
-    ctx.stroke();
-  }
 }
 
 function drawEnemies(elapsedSeconds) {
@@ -1077,14 +1108,17 @@ function drawEnemies(elapsedSeconds) {
     const fullHeight = box.sourceH * drawScale;
     const fullX = enemy.x + (enemy.width - fullWidth) * 0.5;
     const fullY = enemy.y + (enemy.height - fullHeight);
-    const mirroredSourceX = box.sourceW - box.sourceX - frame.w;
-    const drawX = fullX + mirroredSourceX * drawScale;
+    const drawX = fullX + (box.sourceW - box.sourceX - frame.w) * drawScale;
     const drawY = fullY + box.sourceY * drawScale;
     const drawWidth = frame.w * drawScale;
     const drawHeight = frame.h * drawScale;
 
-    // Enemy atlas frames face opposite run direction, so mirror source placement.
-    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, drawX, drawY, drawWidth, drawHeight);
+    // Enemy atlas frames face opposite run direction, so flip horizontally.
+    ctx.save();
+    ctx.translate(drawX + drawWidth, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, 0, drawY, drawWidth, drawHeight);
+    ctx.restore();
   }
 }
 
@@ -1140,7 +1174,7 @@ function drawObstacles(elapsedSeconds) {
 
 function drawCollectibles(elapsedSeconds) {
   const icon = state.resources.images.collectibleIcon;
-  const paypalCard = state.resources.images.paypalCard;
+  const paypalCard = state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
 
   for (const collectible of state.collectibles) {
     const bob = Math.sin(elapsedSeconds * 4 + collectible.bobSeed) * 10;
@@ -1180,9 +1214,99 @@ function drawCollectibles(elapsedSeconds) {
   }
 }
 
+function drawRotatedImage(image, x, y, width, height, rotation, anchorX = 0.5, anchorY = 0.5) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.drawImage(image, -width * anchorX, -height * anchorY, width, height);
+  ctx.restore();
+}
+
 function drawFinishLine() {
   const finish = state.finishLine;
   if (!finish) {
+    return;
+  }
+
+  const floorPattern = state.resources.images.finishFloorPattern;
+  const leftPole = state.resources.images.finishPoleLeft;
+  const rightPole = state.resources.images.finishPoleRight;
+  const leftTape = state.resources.images.finishTapeLeft;
+  const rightTape = state.resources.images.finishTapeRight;
+  const canUseSpriteFinish =
+    floorPattern && leftPole && rightPole && leftTape && rightTape;
+
+  if (canUseSpriteFinish) {
+    const floorWidth = floorPattern.width * 2;
+    const floorHeight = floorPattern.height * 2;
+    const leftPoleWidth = leftPole.width * finishPoleLeftScale;
+    const leftPoleHeight = leftPole.height * finishPoleLeftScale;
+    const rightPoleWidth = rightPole.width * finishPoleRightScale;
+    const rightPoleHeight = rightPole.height * finishPoleRightScale;
+    const leftBottomX = finish.x - 42;
+    const rightBottomX = finish.x + 74;
+    const polesBottomY = GROUND_Y - 2;
+    const leftTopY = polesBottomY - leftPoleHeight;
+    const rightTopY = polesBottomY - rightPoleHeight;
+    const leftTapeWidth = leftTape.width * finishTapeScaleX;
+    const leftTapeHeight = leftTape.height * finishTapeScaleY;
+    const rightTapeWidth = rightTape.width * finishTapeScaleX;
+    const rightTapeHeight = rightTape.height * finishTapeScaleY;
+    const leftTapeAnchorX = leftBottomX;
+    const leftTapeAnchorY = leftTopY + 40;
+    const rightTapeAnchorX = rightBottomX - 24;
+    const rightTapeAnchorY = rightTopY + 58;
+    const leftTapeRotation = finish.tapeBroken ? 1.05 : 0.4;
+    const rightTapeRotation = finish.tapeBroken ? -3.25 : -2.5;
+
+    ctx.drawImage(
+      floorPattern,
+      finish.x - floorWidth * 0.5,
+      GROUND_Y - 84,
+      floorWidth,
+      floorHeight
+    );
+
+    drawRotatedImage(
+      leftPole,
+      leftBottomX,
+      polesBottomY,
+      leftPoleWidth,
+      leftPoleHeight,
+      -Math.PI / 2,
+      0.5,
+      1
+    );
+    drawRotatedImage(
+      rightPole,
+      rightBottomX,
+      polesBottomY,
+      rightPoleWidth,
+      rightPoleHeight,
+      -Math.PI / 2,
+      0.5,
+      1
+    );
+    drawRotatedImage(
+      leftTape,
+      leftTapeAnchorX,
+      leftTapeAnchorY,
+      leftTapeWidth,
+      leftTapeHeight,
+      leftTapeRotation,
+      0,
+      0
+    );
+    drawRotatedImage(
+      rightTape,
+      rightTapeAnchorX,
+      rightTapeAnchorY,
+      rightTapeWidth,
+      rightTapeHeight,
+      rightTapeRotation,
+      0,
+      0
+    );
     return;
   }
 

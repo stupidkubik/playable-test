@@ -71,16 +71,31 @@ const assets = {
     tutorialHand: findDataUri(source, "Yq"),
     hudCounter: findDataUri(source, "Oq"),
     collectibleIcon: findDataUri(source, "Mp"),
+    collectiblePaypalCard: findDataUri(source, "Lq"),
+    paypalCardOriginal: findDataUri(source, "Ep"),
+    lightsEffectOriginal: findDataUri(source, "jq"),
     backdropPortrait: findDataUri(source, "Fl"),
     backdropLandscape: findDataUri(source, "Kl"),
     sceneBackground: findDataUri(source, "gq"),
     sceneTreeLeft: findDataUri(source, "Eq"),
     sceneTreeRight: findDataUri(source, "Vq"),
     sceneBushLarge: findDataUri(source, "qq"),
+    sceneBushMedium: findDataUri(source, "mq"),
     sceneBushSmall: findDataUri(source, "Sq"),
     sceneLamp: findDataUri(source, "Mq"),
     obstacleSprite: findDataUri(source, "nq"),
-    obstacleGlow: findDataUri(source, "aq")
+    obstacleGlow: findDataUri(source, "aq"),
+    finishFloorPattern: findDataUri(source, "hq"),
+    finishPoleLeft: findDataUri(source, "cq"),
+    finishPoleRight: findDataUri(source, "uq"),
+    finishTapeLeft: findDataUri(source, "dq"),
+    finishTapeRight: findDataUri(source, "fq"),
+    confettiParticle1: findDataUri(source, "bq"),
+    confettiParticle2: findDataUri(source, "yq"),
+    confettiParticle3: findDataUri(source, "xq"),
+    confettiParticle4: findDataUri(source, "vq"),
+    confettiParticle5: findDataUri(source, "Cq"),
+    confettiParticle6: findDataUri(source, "Uq")
   },
   audio: {
     jump: {
@@ -94,6 +109,27 @@ const assets = {
     collect: {
       url: findDataUri(source, "wq"),
       volume: 0.35
+    },
+    hurt: {
+      url: findDataUri(source, "Qq"),
+      volume: 0.7
+    },
+    step: {
+      url: findDataUri(source, "Pq"),
+      volume: 0.3
+    },
+    win: {
+      url: findDataUri(source, "Jq"),
+      volume: 0.8
+    },
+    lose: {
+      url: findDataUri(source, "Gq"),
+      volume: 0.8
+    },
+    music: {
+      url: findDataUri(source, "Wq"),
+      volume: 0.3,
+      loop: true
     }
   },
   frames: {
