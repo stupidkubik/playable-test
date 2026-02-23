@@ -22,6 +22,8 @@ import { ASSETS } from "./assets/extractedAssets.js";
 
 const canvas = document.querySelector("#game");
 const ctx = canvas.getContext("2d");
+const playerFlashCanvas = document.createElement("canvas");
+const playerFlashCtx = playerFlashCanvas.getContext("2d");
 
 const startOverlay = document.querySelector("#start-overlay");
 const endOverlay = document.querySelector("#end-overlay");
@@ -145,7 +147,8 @@ const state = {
   countdownIntervalId: null,
   balanceAnimationId: null,
   failTimeoutId: null,
-  nextId: 1
+  nextId: 1,
+  frozenEnemyAnimationTick: null
 };
 
 function allocateId() {
@@ -312,6 +315,7 @@ function showFailAnimation(totalReward) {
 function showEndScreen(isWin, totalReward) {
   clearEndTimers();
   setFooterVisible(false);
+  endOverlay.classList.toggle("win-overlay", isWin);
 
   if (endTitle) {
     endTitle.textContent = isWin ? "Congratulations!" : "You didn't make it!";
@@ -507,6 +511,7 @@ function resetWorld() {
   state.lastStepSoundAt = 0;
   state.skyOffset = 0;
   state.groundOffset = 0;
+  state.frozenEnemyAnimationTick = null;
 
   resetPlayerPosition();
 
@@ -553,6 +558,7 @@ function startJump() {
 }
 
 function resumeFromTutorial() {
+  state.frozenEnemyAnimationTick = null;
   state.mode = STATES.running;
   state.isRunning = true;
   state.jumpingEnabled = true;
@@ -562,6 +568,7 @@ function resumeFromTutorial() {
 function handleWin() {
   state.isRunning = false;
   state.mode = STATES.endWin;
+  resetPlayerPosition();
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
   playSound("win");
@@ -571,6 +578,7 @@ function handleWin() {
 function handleLose() {
   state.isRunning = false;
   state.mode = STATES.endLose;
+  resetPlayerPosition();
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
   playSound("lose");
@@ -581,6 +589,7 @@ function triggerTutorialPause() {
   state.tutorialTriggered = true;
   state.isRunning = false;
   state.mode = STATES.paused;
+  state.frozenEnemyAnimationTick = Math.floor(performance.now() / 100);
 }
 
 function spawnWarningLabel(x) {
@@ -928,17 +937,20 @@ function currentPlayerFrame() {
   const idleFrames = ASSETS.frames.playerIdle || ASSETS.frames.playerRun;
   const runFrames = ASSETS.frames.playerRun;
   const jumpFrames = ASSETS.frames.playerJump;
-  const hurtFrames = ASSETS.frames.playerHurt;
 
-  if (state.mode === STATES.endLose || state.player.invincibilityMs > 0) {
-    return hurtFrames[Math.floor(state.player.animationTime * 10) % hurtFrames.length];
+  if (state.mode === STATES.endWin || state.mode === STATES.endLose) {
+    return idleFrames[0];
   }
 
   if (state.player.isJumping) {
     return jumpFrames[Math.floor(state.player.animationTime * 12) % jumpFrames.length];
   }
 
-  if (state.mode === STATES.running || state.mode === STATES.paused) {
+  if (state.mode === STATES.paused) {
+    return idleFrames[0];
+  }
+
+  if (state.mode === STATES.running) {
     return runFrames[Math.floor(state.player.animationTime * 12) % runFrames.length];
   }
 
@@ -1052,15 +1064,12 @@ function drawGround() {
 }
 
 function drawPlayer() {
-  if (!state.player.blinkVisible) {
-    return;
-  }
-
   const spriteSheet = state.resources.images.playerSheet;
   const frame = currentPlayerFrame();
+  const damageFlashActive = state.player.invincibilityMs > 0 && !state.player.blinkVisible;
 
   if (!spriteSheet || !frame) {
-    ctx.fillStyle = "#f2664b";
+    ctx.fillStyle = damageFlashActive ? "#ff4a4a" : "#f2664b";
     ctx.fillRect(state.player.x, state.player.y, state.player.width, state.player.height);
     return;
   }
@@ -1088,11 +1097,44 @@ function drawPlayer() {
     drawWidth,
     drawHeight
   );
+
+  if (damageFlashActive && playerFlashCtx) {
+    const flashPadding = 2;
+    const flashWidth = Math.max(1, Math.ceil(drawWidth + flashPadding * 2));
+    const flashHeight = Math.max(1, Math.ceil(drawHeight + flashPadding * 2));
+
+    if (playerFlashCanvas.width !== flashWidth || playerFlashCanvas.height !== flashHeight) {
+      playerFlashCanvas.width = flashWidth;
+      playerFlashCanvas.height = flashHeight;
+    } else {
+      playerFlashCtx.clearRect(0, 0, flashWidth, flashHeight);
+    }
+
+    playerFlashCtx.drawImage(
+      spriteSheet,
+      frame.x,
+      frame.y,
+      frame.w,
+      frame.h,
+      flashPadding,
+      flashPadding,
+      drawWidth,
+      drawHeight
+    );
+    playerFlashCtx.globalCompositeOperation = "source-in";
+    playerFlashCtx.fillStyle = "rgba(255, 58, 58, 0.62)";
+    playerFlashCtx.fillRect(0, 0, flashWidth, flashHeight);
+    playerFlashCtx.globalCompositeOperation = "source-over";
+
+    ctx.drawImage(playerFlashCanvas, drawX - flashPadding, drawY - flashPadding);
+  }
 }
 
 function drawEnemies(elapsedSeconds) {
   const spriteSheet = state.resources.images.enemySheet;
   const sequence = ASSETS.frames.enemyRun;
+  const frozenTick = state.frozenEnemyAnimationTick;
+  const useFrozenTick = state.mode === STATES.paused && Number.isFinite(frozenTick);
 
   for (const enemy of state.enemies) {
     if (!spriteSheet) {
@@ -1101,7 +1143,8 @@ function drawEnemies(elapsedSeconds) {
       continue;
     }
 
-    const frame = sequence[(Math.floor(elapsedSeconds * 10) + enemy.animationOffset) % sequence.length];
+    const frameTick = useFrozenTick ? frozenTick : Math.floor(elapsedSeconds * 10);
+    const frame = sequence[(frameTick + enemy.animationOffset) % sequence.length];
     const box = frameSourceBox(frame);
     const drawScale = (enemy.scale || enemyCollisionScale) * enemyRenderScaleMultiplier;
     const fullWidth = box.sourceW * drawScale;
@@ -1367,7 +1410,25 @@ function drawWarnings(elapsedSeconds) {
   }
 }
 
-function drawTutorialHint() {
+function tutorialHandPulseScale(elapsedSeconds) {
+  const cycleSeconds = 1.1;
+  const phase = (elapsedSeconds % cycleSeconds) / cycleSeconds;
+  return 0.97 - 0.09 * Math.cos(phase * Math.PI * 2);
+}
+
+function drawPulsingHand(hand, x, y, width, height, elapsedSeconds) {
+  const scale = tutorialHandPulseScale(elapsedSeconds);
+  const anchorX = x + width * 0.5;
+  const anchorY = y + height * 0.7;
+
+  ctx.save();
+  ctx.translate(anchorX, anchorY);
+  ctx.scale(scale, scale);
+  ctx.drawImage(hand, -width * 0.5, -height * 0.7, width, height);
+  ctx.restore();
+}
+
+function drawTutorialHint(elapsedSeconds) {
   if (state.mode !== STATES.paused) {
     return;
   }
@@ -1384,7 +1445,7 @@ function drawTutorialHint() {
 
   const hand = state.resources.images.tutorialHand;
   if (hand) {
-    ctx.drawImage(hand, GAME_WIDTH * 0.5 - 50, GROUND_Y - 230, 100, 100);
+    drawPulsingHand(hand, GAME_WIDTH * 0.5 - 50, GROUND_Y - 230, 100, 100, elapsedSeconds);
   }
 }
 
@@ -1412,7 +1473,7 @@ function render(elapsedSeconds) {
   drawEnemies(elapsedSeconds);
   drawWarnings(elapsedSeconds);
   drawPlayer();
-  drawTutorialHint();
+  drawTutorialHint(elapsedSeconds);
 }
 
 function update(deltaSeconds, deltaMs) {
