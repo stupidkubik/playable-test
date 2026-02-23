@@ -200,7 +200,7 @@ function tutorialHandPulseScale(elapsedSeconds) {
   return 0.97 - 0.09 * Math.cos(phase * Math.PI * 2);
 }
 
-function syncSkyLayer(PIXI, textureCache, layers, sceneState, width, groundY) {
+function syncSkyLayer(PIXI, textureCache, layers, sceneState, width, groundY, height) {
   clearContainer(layers.sky);
 
   const scene = sceneState?.resources?.images?.sceneBackground;
@@ -213,7 +213,9 @@ function syncSkyLayer(PIXI, textureCache, layers, sceneState, width, groundY) {
     return;
   }
 
-  const scale = groundY / scene.height;
+  // In Pixi mode the host canvas is transparent (input-layer only), so the scene background
+  // must cover the full render surface instead of relying on CSS background under the canvas.
+  const scale = height / scene.height;
   const drawWidth = scene.width * scale;
   const tileIndexStart = Math.floor(sceneState.skyOffset / drawWidth);
   const wrappedOffset = ((sceneState.skyOffset % drawWidth) + drawWidth) % drawWidth;
@@ -702,11 +704,13 @@ function syncWarningsLayer(PIXI, layers, sceneState, elapsedSeconds) {
 
   const warnings = sceneState?.warningLabels || [];
   for (const warning of warnings) {
+    const badgeCenterX = warning.x + 34;
+    const badgeCenterY = warning.y - 8;
     const pulse = 1 + Math.sin(elapsedSeconds * 8 + warning.pulseSeed) * 0.1;
     const w = 166 * pulse;
     const h = 52 * pulse;
-    const x = warning.x - w * 0.5;
-    const y = warning.y - h * 0.5;
+    const x = badgeCenterX - w * 0.5;
+    const y = badgeCenterY - h * 0.5;
 
     const fill = new PIXI.Graphics();
     fill.roundRect(x, y, w, h, 10).fill({ color: 0xffbf00, alpha: 0.94 });
@@ -720,11 +724,11 @@ function syncWarningsLayer(PIXI, layers, sceneState, elapsedSeconds) {
       PIXI,
       layers.warnings,
       "AVOID!",
-      warning.x,
-      warning.y + 11,
+      badgeCenterX,
+      badgeCenterY + 4,
       {
         fontFamily: "GameFont",
-        fontSize: 30,
+        fontSize: 28,
         fontWeight: "900",
         fill: 0xff1f16,
         align: "center"
@@ -735,26 +739,40 @@ function syncWarningsLayer(PIXI, layers, sceneState, elapsedSeconds) {
   }
 }
 
-function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSeconds, width, groundY) {
+function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSeconds, width, groundY, height) {
   clearContainer(layers.tutorialHint);
 
   if (sceneState?.mode !== STATES.paused) {
     return;
   }
 
-  const panel = new PIXI.Graphics();
-  panel.roundRect(width * 0.5 - 220, 148, 440, 82, 20).fill({ color: 0x081422, alpha: 0.72 });
-  layers.tutorialHint.addChild(panel);
+  const hintY = height * 0.58;
 
   addTextLabel(
     PIXI,
     layers.tutorialHint,
     "Jump to avoid enemies",
     width * 0.5,
-    203,
+    hintY,
     {
       fontFamily: "GameFont",
-      fontSize: 34,
+      fontSize: 52,
+      fontWeight: "700",
+      fill: 0x000000,
+      align: "center"
+    },
+    0.5,
+    0.5
+  );
+  addTextLabel(
+    PIXI,
+    layers.tutorialHint,
+    "Jump to avoid enemies",
+    width * 0.5,
+    hintY - 2,
+    {
+      fontFamily: "GameFont",
+      fontSize: 52,
       fontWeight: "700",
       fill: 0xffffff,
       align: "center"
@@ -771,7 +789,7 @@ function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSe
   const handWidth = 100;
   const handHeight = 100;
   const handX = width * 0.5 - 50;
-  const handY = groundY - 230;
+  const handY = hintY + 34;
   const anchorX = handX + handWidth * 0.5;
   const anchorY = handY + handHeight * 0.7;
   const scale = tutorialHandPulseScale(elapsedSeconds);
@@ -805,7 +823,7 @@ export function createPixiRenderer(options = {}) {
       return;
     }
     fallbackNoticeShown = true;
-    console.warn(`[renderer] Pixi backend unavailable, using canvas: ${reason}`);
+    console.warn(`[renderer] Pixi backend unavailable: ${reason}`);
   }
 
   function restoreCanvasInputLayer() {
@@ -897,7 +915,15 @@ export function createPixiRenderer(options = {}) {
       }
 
       const sceneState = frame?.state || null;
-      syncSkyLayer(PIXIRef, textureCache, layers, sceneState, width, options.groundY ?? height * 0.66);
+      syncSkyLayer(
+        PIXIRef,
+        textureCache,
+        layers,
+        sceneState,
+        width,
+        options.groundY ?? height * 0.66,
+        height
+      );
       syncDecorLayer(PIXIRef, textureCache, layers, sceneState, width, options.groundY ?? height * 0.66);
       syncGroundLayer(
         PIXIRef,
@@ -940,7 +966,8 @@ export function createPixiRenderer(options = {}) {
         sceneState,
         frame?.elapsedSeconds ?? 0,
         width,
-        options.groundY ?? height * 0.66
+        options.groundY ?? height * 0.66,
+        height
       );
       app.render();
     },

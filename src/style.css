@@ -78,28 +78,72 @@ body {
 
 .paypal-counter {
   position: relative;
-  min-width: 164px;
+  min-width: 84px;
   display: flex;
   justify-content: flex-end;
 }
 
+.paypal-counter.pulse {
+  animation: paypal-counter-pulse 0.18s ease-out;
+}
+
+@keyframes paypal-counter-pulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
 .paypal-counter-image {
-  width: min(46vw, 190px);
-  max-width: 190px;
+  width: min(23vw, 92px);
+  max-width: 92px;
   height: auto;
   display: block;
 }
 
 .paypal-counter-amount {
   position: absolute;
-  right: 14px;
+  right: 6px;
   top: 50%;
   transform: translateY(-52%);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
-  letter-spacing: 0.02em;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.01em;
+  color: #003087;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.flying-collectible {
+  position: fixed;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 500;
+  transform: translate(-50%, -50%);
+}
+
+.flying-collectible img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: spin-collectible var(--fly-duration, 0.5s) linear forwards;
+}
+
+@keyframes spin-collectible {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(720deg);
+  }
 }
 
 canvas {
@@ -174,10 +218,12 @@ canvas {
 }
 
 @keyframes intro-hand-scale {
+
   0%,
   100% {
     transform: scale(0.88);
   }
+
   50% {
     transform: scale(1.06);
   }
@@ -188,7 +234,7 @@ canvas {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 124px;
+  height: 136px;
   z-index: 130;
   display: flex;
   align-items: center;
@@ -205,11 +251,11 @@ canvas {
   border-radius: 14px;
   background: linear-gradient(180deg, #ffe34a 0%, #ffbf2e 45%, #ff9600 100%);
   color: #fff;
-  font-size: clamp(16px, 4.4vw, 26px);
+  font-size: clamp(14px, 3.8vw, 22px);
   font-weight: 900;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  padding: 12px 24px;
+  padding: 10px 18px;
   text-shadow:
     -1px -1px 0 #000,
     1px -1px 0 #000,
@@ -225,10 +271,12 @@ canvas {
 }
 
 @keyframes footer-cta-scale {
+
   0%,
   100% {
     transform: scale(0.93);
   }
+
   50% {
     transform: scale(1.04);
   }
@@ -319,6 +367,7 @@ canvas {
     opacity: 0;
     transform: translate(-50%, -50%) scale(1);
   }
+
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.5);
@@ -329,6 +378,7 @@ canvas {
   0% {
     transform: translate(-50%, -50%) scale(1.5) rotate(0deg);
   }
+
   100% {
     transform: translate(-50%, -50%) scale(1.5) rotate(360deg);
   }
@@ -339,6 +389,9 @@ canvas {
   display: inline-block;
   z-index: 1;
   transform: scale(0);
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .paypal-card-container.animate-scale {
@@ -349,9 +402,11 @@ canvas {
   0% {
     transform: scale(0);
   }
+
   60% {
     transform: scale(1.5);
   }
+
   100% {
     transform: scale(1);
   }
@@ -424,10 +479,12 @@ canvas {
 }
 
 @keyframes pulse-button {
+
   0%,
   100% {
     transform: scale(0.9);
   }
+
   50% {
     transform: scale(1.1);
   }
@@ -460,10 +517,12 @@ canvas {
     transform: scale(0);
     opacity: 0;
   }
+
   70% {
     transform: scale(1.2);
     opacity: 1;
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -475,7 +534,8 @@ canvas {
   cursor: wait;
 }
 
-@media (max-height: 560px), (orientation: landscape) {
+@media (max-height: 560px),
+(orientation: landscape) {
   .intro-copy {
     margin-top: 50vh;
     font-size: clamp(18px, 4vh, 30px);
@@ -492,8 +552,6 @@ canvas {
   .game-footer {
     height: 84px;
     padding-bottom: 8px;
-    background-image: var(--footer-landscape);
-    background-size: cover;
   }
 
   .footer-cta {
@@ -559,5 +617,89 @@ canvas {
     height: 40vmin;
     max-width: 250px;
     max-height: 250px;
+  }
+}
+
+@media (orientation: landscape) {
+  .app-shell {
+    height: min(100vh, 430px);
+    width: calc(min(100vh, 430px) * 16 / 9);
+    max-height: none;
+    aspect-ratio: 16 / 9;
+    background: #111827;
+  }
+
+  canvas {
+    object-fit: cover;
+    object-position: center 72%;
+  }
+
+  .game-header {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+  }
+
+  .hp-container {
+    gap: 6px;
+  }
+
+  .heart {
+    font-size: 20px;
+  }
+
+  .paypal-counter {
+    min-width: 146px;
+  }
+
+  .paypal-counter-image {
+    width: min(38vw, 170px);
+    max-width: 170px;
+  }
+
+  .paypal-counter-amount {
+    right: 12px;
+    font-size: 18px;
+  }
+
+  .intro-copy {
+    margin-top: 42%;
+    max-width: 72%;
+  }
+
+  .intro-hand-wrap {
+    bottom: 108px;
+  }
+
+  .game-footer {
+    height: 80px;
+    padding: 0 10px 6px;
+    background-image: var(--footer-landscape);
+    background-size: 100% 100%;
+    background-position: center center;
+  }
+
+  .footer-cta {
+    min-width: 148px;
+    border-width: 2px;
+    border-radius: 12px;
+  }
+
+  .end-content {
+    width: min(100%, 760px);
+    padding-inline: 18px;
+  }
+
+  .lights-effect {
+    width: 280px;
+  }
+
+  .paypal-card-image {
+    max-width: min(42vw, 340px);
+  }
+
+  .fail-image {
+    max-width: 220px;
+    max-height: 220px;
   }
 }

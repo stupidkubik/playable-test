@@ -20,11 +20,9 @@ import {
 } from "./gameLogic.js";
 import { ASSETS } from "./assets/extractedAssets.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
+import { createUiEffects } from "./uiEffects.js";
 
 const canvas = document.querySelector("#game");
-const ctx = canvas.getContext("2d");
-const playerFlashCanvas = document.createElement("canvas");
-const playerFlashCtx = playerFlashCanvas.getContext("2d");
 
 const startOverlay = document.querySelector("#start-overlay");
 const endOverlay = document.querySelector("#end-overlay");
@@ -43,6 +41,7 @@ const lightsEffect = document.querySelector("#lights-effect");
 const endAmountLabel = document.querySelector("#end-amount");
 const hpDisplay = document.querySelector("#hp-display");
 const scoreDisplay = document.querySelector("#score-display");
+const paypalCounter = document.querySelector("#paypal-counter");
 const hudCounterImage = document.querySelector("#hud-counter-image");
 const ctaButton = document.querySelector("#cta-button");
 const gameFooter = document.querySelector("#game-footer");
@@ -64,15 +63,6 @@ function firstFrameOrFallback(frames, fallback) {
   return frames[0];
 }
 
-function frameSourceBox(frame) {
-  return {
-    sourceX: frame.sourceX ?? 0,
-    sourceY: frame.sourceY ?? 0,
-    sourceW: frame.sourceW ?? frame.w,
-    sourceH: frame.sourceH ?? frame.h
-  };
-}
-
 const playerBaseFrame = firstFrameOrFallback(
   ASSETS.frames.playerIdle,
   firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 })
@@ -80,16 +70,17 @@ const playerBaseFrame = firstFrameOrFallback(
 const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
-const playerRenderHeightMultiplier = 1.58;
-const playerIdleIntroFps = 9;
 const enemyCollisionScale = 0.44;
-const enemyRenderScaleMultiplier = 1.12;
-const finishPoleLeftScale = 1.8;
-const finishPoleRightScale = 1.35;
-const finishTapeScaleX = 1.8;
-const finishTapeScaleY = 1;
-const requestedRenderer = new URLSearchParams(window.location.search).get("renderer");
-const RENDER_BACKEND = requestedRenderer === "pixi" ? "pixi" : "canvas";
+const collectibleBaseScale = 0.15;
+const collectibleTypeScale = Object.freeze({
+  dollar: collectibleBaseScale,
+  paypalCard: collectibleBaseScale * 1.2
+});
+const collectibleFallbackSourceSize = Object.freeze({
+  dollar: { width: 1024, height: 1024 },
+  paypalCard: { width: 800, height: 200 }
+});
+const collectibleBaseLift = 64;
 const confettiTextureKeys = [
   "confettiParticle1",
   "confettiParticle2",
@@ -162,10 +153,8 @@ const state = {
   rafId: 0,
   lastFrameTime: 0,
   lastStepSoundAt: 0,
+  musicPlayPending: false,
   winTimeoutId: null,
-  countdownIntervalId: null,
-  balanceAnimationId: null,
-  failTimeoutId: null,
   nextId: 1,
   frozenEnemyAnimationTick: null,
   confettiParticles: []
@@ -204,161 +193,34 @@ function showIntroOverlay(message = "Tap to start earning!") {
   startOverlay.classList.add("overlay-visible");
 }
 
-function clearEndTimers() {
-  if (state.countdownIntervalId) {
-    clearInterval(state.countdownIntervalId);
-    state.countdownIntervalId = null;
-  }
-
-  if (state.balanceAnimationId) {
-    cancelAnimationFrame(state.balanceAnimationId);
-    state.balanceAnimationId = null;
-  }
-
-  if (state.failTimeoutId) {
-    clearTimeout(state.failTimeoutId);
-    state.failTimeoutId = null;
-  }
-}
-
-function updateCountdownDisplay(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (countdownTime) {
-    countdownTime.textContent = `${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
-  }
-}
-
-function startCountdown(durationSeconds = 60) {
-  if (!countdownContainer) {
-    return;
-  }
-
-  if (state.countdownIntervalId) {
-    clearInterval(state.countdownIntervalId);
-    state.countdownIntervalId = null;
-  }
-  let remaining = durationSeconds;
-  countdownContainer.classList.remove("hidden");
-  updateCountdownDisplay(remaining);
-
-  state.countdownIntervalId = setInterval(() => {
-    remaining -= 1;
-    if (remaining <= 0) {
-      countdownContainer.classList.add("hidden");
-      if (state.countdownIntervalId) {
-        clearInterval(state.countdownIntervalId);
-        state.countdownIntervalId = null;
-      }
-      return;
+const uiEffects = createUiEffects({
+  canvas,
+  gameWidth: GAME_WIDTH,
+  gameHeight: GAME_HEIGHT,
+  setFooterVisible,
+  getCollectibleImage(type) {
+    if (type === "paypalCard") {
+      return state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
     }
 
-    updateCountdownDisplay(remaining);
-  }, 1000);
-}
-
-function resetEndScreenAnimations() {
-  if (state.balanceAnimationId) {
-    cancelAnimationFrame(state.balanceAnimationId);
-    state.balanceAnimationId = null;
+    return state.resources.images.collectibleIcon;
+  },
+  elements: {
+    ctaButton,
+    countdownContainer,
+    countdownTime,
+    endAmountLabel,
+    endOverlay,
+    endSubtitle,
+    endTitle,
+    failImage,
+    failOverlay,
+    lightsEffect,
+    paypalCardContainer,
+    paypalCardWrapper,
+    paypalCounter
   }
-
-  if (endAmountLabel) {
-    endAmountLabel.textContent = "$0.00";
-  }
-
-  paypalCardWrapper?.classList.remove("hidden");
-  paypalCardContainer?.classList.remove("animate-scale");
-  lightsEffect?.classList.remove("animate-lights");
-  void paypalCardContainer?.offsetHeight;
-}
-
-function animateBalance(targetValue) {
-  const start = performance.now();
-  const durationMs = 1000;
-
-  const tick = (now) => {
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / durationMs, 1);
-    const eased = 1 - (1 - progress) ** 3;
-    const value = targetValue * eased;
-
-    if (endAmountLabel) {
-      endAmountLabel.textContent = `$${value.toFixed(2)}`;
-    }
-
-    if (progress < 1) {
-      state.balanceAnimationId = requestAnimationFrame(tick);
-    } else {
-      state.balanceAnimationId = null;
-    }
-  };
-
-  state.balanceAnimationId = requestAnimationFrame(tick);
-}
-
-function playEndScreenAnimations(totalReward) {
-  resetEndScreenAnimations();
-  paypalCardContainer?.classList.add("animate-scale");
-  lightsEffect?.classList.add("animate-lights");
-  setTimeout(() => {
-    animateBalance(totalReward);
-  }, 600);
-}
-
-function showFailAnimation(totalReward) {
-  if (!failOverlay) {
-    endOverlay.classList.add("overlay-visible");
-    playEndScreenAnimations(totalReward);
-    startCountdown(60);
-    return;
-  }
-
-  failOverlay.classList.remove("hidden");
-
-  if (failImage) {
-    failImage.style.animation = "none";
-    void failImage.offsetHeight;
-    failImage.style.animation = "";
-  }
-
-  state.failTimeoutId = setTimeout(() => {
-    failOverlay.classList.add("hidden");
-    endOverlay.classList.add("overlay-visible");
-    playEndScreenAnimations(totalReward);
-    startCountdown(60);
-    state.failTimeoutId = null;
-  }, 1500);
-}
-
-function showEndScreen(isWin, totalReward) {
-  clearEndTimers();
-  setFooterVisible(false);
-  endOverlay.classList.toggle("win-overlay", isWin);
-
-  if (endTitle) {
-    endTitle.textContent = isWin ? "Congratulations!" : "You didn't make it!";
-  }
-  if (endSubtitle) {
-    endSubtitle.textContent = isWin ? "Choose your reward!" : "Try again on the app!";
-  }
-  if (ctaButton) {
-    ctaButton.classList.toggle("lose", !isWin);
-  }
-  if (countdownContainer && !isWin) {
-    countdownContainer.classList.add("hidden");
-  }
-
-  if (isWin) {
-    endOverlay.classList.add("overlay-visible");
-    playEndScreenAnimations(totalReward);
-    startCountdown(60);
-  } else {
-    showFailAnimation(totalReward);
-  }
-}
+});
 
 function createImage(dataUri) {
   return new Promise((resolve, reject) => {
@@ -375,6 +237,45 @@ function createAudio(source, volume, loop = false) {
   audio.volume = volume;
   audio.loop = loop;
   return audio;
+}
+
+function waitForAudioReady(audio, timeoutMs = 1500) {
+  if (!audio) {
+    return Promise.resolve();
+  }
+
+  // HAVE_CURRENT_DATA (2) is enough to begin playback in most browsers.
+  if (audio.readyState >= 2) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      audio.removeEventListener("canplay", onReady);
+      audio.removeEventListener("loadeddata", onReady);
+      audio.removeEventListener("error", onError);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onReady = () => finish();
+    const onError = () => finish();
+    const timer = setTimeout(finish, timeoutMs);
+
+    audio.addEventListener("canplay", onReady, { once: true });
+    audio.addEventListener("loadeddata", onReady, { once: true });
+    audio.addEventListener("error", onError, { once: true });
+
+    try {
+      audio.load();
+    } catch {
+      finish();
+    }
+  });
 }
 
 function syncGameHeader(force = false) {
@@ -412,7 +313,10 @@ async function loadResources() {
     state.resources.images.collectiblePaypalCard ||
     null;
   state.resources.images.paypalCardCollectible =
-    state.resources.images.collectiblePaypalCard || state.resources.images.paypalCard;
+    state.resources.images.paypalCardOriginal ||
+    state.resources.images.paypalCard ||
+    state.resources.images.collectiblePaypalCard ||
+    null;
   state.resources.images.lightsEffect = state.resources.images.lightsEffectOriginal || null;
 
   state.resources.audio = Object.fromEntries(
@@ -421,6 +325,8 @@ async function loadResources() {
       createAudio(value.url, value.volume, value.loop || false)
     ])
   );
+
+  await waitForAudioReady(state.resources.audio.music);
 
   failImage.src = state.resources.images.failBanner.src;
 
@@ -462,14 +368,29 @@ function playMusic() {
     return;
   }
 
+  if (state.musicPlayPending) {
+    return;
+  }
+
   if (!music.paused && !music.ended) {
     return;
   }
 
-  music.currentTime = 0;
-  music.play().catch(() => {
-    // Browser autoplay may block audio until first interaction.
-  });
+  if (music.ended) {
+    music.currentTime = 0;
+  }
+
+  const playAttempt = music.play();
+  if (playAttempt && typeof playAttempt.then === "function") {
+    state.musicPlayPending = true;
+    playAttempt
+      .catch(() => {
+        // Browser autoplay may block audio until first interaction.
+      })
+      .finally(() => {
+        state.musicPlayPending = false;
+      });
+  }
 }
 
 function stopMusic() {
@@ -478,6 +399,7 @@ function stopMusic() {
     return;
   }
 
+  state.musicPlayPending = false;
   music.pause();
   music.currentTime = 0;
 }
@@ -487,7 +409,7 @@ function resetWorld() {
     clearTimeout(state.winTimeoutId);
     state.winTimeoutId = null;
   }
-  clearEndTimers();
+  uiEffects.clearEndTimers();
 
   state.mode = STATES.intro;
   state.score = ECONOMY_CONFIG.startBalance;
@@ -523,12 +445,13 @@ function resetWorld() {
   setFooterVisible(true);
   ctaButton?.classList.remove("lose");
   countdownContainer?.classList.remove("hidden");
-  resetEndScreenAnimations();
+  uiEffects.resetEndScreenAnimations();
   syncGameHeader(true);
   showIntroOverlay("Tap to start earning!");
 }
 
-function startRun() {
+function startRun(options = {}) {
+  const { skipMusic = false } = options;
   if (state.mode === STATES.loading) {
     return;
   }
@@ -537,7 +460,9 @@ function startRun() {
   state.mode = STATES.running;
   state.isRunning = true;
   state.jumpingEnabled = false;
-  playMusic();
+  if (!skipMusic) {
+    playMusic();
+  }
 }
 
 function startJump() {
@@ -566,7 +491,7 @@ function handleWin() {
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
   playSound("win");
-  showEndScreen(true, state.score);
+  uiEffects.showEndScreen(true, state.score);
 }
 
 function handleLose() {
@@ -576,7 +501,7 @@ function handleLose() {
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
   playSound("lose");
-  showEndScreen(false, state.score);
+  uiEffects.showEndScreen(false, state.score);
 }
 
 function triggerTutorialPause() {
@@ -632,17 +557,50 @@ function spawnObstacle() {
   state.obstacles.push(obstacle);
 }
 
+function imageIntrinsicSize(image, fallbackSize) {
+  if (!image) {
+    return fallbackSize;
+  }
+
+  const width = image.naturalWidth || image.width || fallbackSize.width;
+  const height = image.naturalHeight || image.height || fallbackSize.height;
+  return { width, height };
+}
+
+function collectibleRenderSize(type) {
+  // Use a common pickup footprint based on the money icon, but render the
+  // PayPal card as a flatter badge so it does not look stretched vertically.
+  const fallbackSize = collectibleFallbackSourceSize.dollar;
+  const scale = collectibleTypeScale.dollar;
+  const { width: sourceWidth, height: sourceHeight } = imageIntrinsicSize(
+    state.resources.images.collectibleIcon,
+    fallbackSize
+  );
+
+  const baseWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const baseHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+  if (type === "paypalCard") {
+    return {
+      width: baseWidth,
+      height: Math.max(1, Math.round(baseHeight * 0.5))
+    };
+  }
+
+  return { width: baseWidth, height: baseHeight };
+}
+
 function spawnCollectible(yOffset = 0) {
   const type = Math.random() < 0.6 ? "dollar" : "paypalCard";
-  const width = type === "paypalCard" ? 86 : 54;
-  const height = type === "paypalCard" ? 58 : 54;
+  const { width, height } = collectibleRenderSize(type);
+  const baselineLift = yOffset > 0 ? 0 : collectibleBaseLift;
 
   const collectible = {
     id: allocateId(),
     x: GAME_WIDTH + GAME_WIDTH * 0.5,
     width,
     height,
-    y: GROUND_Y - height - yOffset,
+    y: GROUND_Y - height - yOffset - baselineLift,
     speed: SPEED_CONFIG.base,
     collected: false,
     collectibleType: type,
@@ -808,8 +766,13 @@ function collectItem(item) {
     return;
   }
 
+  const from = {
+    x: item.x + item.width * 0.5,
+    y: item.y + item.height * 0.5
+  };
   item.collected = true;
   state.score += getCollectibleValue(item.collectibleType);
+  uiEffects.animateFlyingCollectible(from, item.collectibleType);
   playSound("collect");
 }
 
@@ -1027,622 +990,18 @@ function updateRunning(deltaSeconds, deltaMs) {
   updatePlayer(deltaSeconds, deltaMs);
 }
 
-function currentPlayerFrame() {
-  const idleFrames = ASSETS.frames.playerIdle || ASSETS.frames.playerRun;
-  const runFrames = ASSETS.frames.playerRun;
-  const jumpFrames = ASSETS.frames.playerJump;
-
-  if (state.mode === STATES.endWin || state.mode === STATES.endLose) {
-    return idleFrames[0];
-  }
-
-  if (state.player.isJumping) {
-    return jumpFrames[Math.floor(state.player.animationTime * 12) % jumpFrames.length];
-  }
-
-  if (state.mode === STATES.paused) {
-    return idleFrames[0];
-  }
-
-  if (state.mode === STATES.running) {
-    return runFrames[Math.floor(state.player.animationTime * 12) % runFrames.length];
-  }
-
-  if (state.mode === STATES.intro) {
-    return idleFrames[Math.floor(state.player.animationTime * playerIdleIntroFps) % idleFrames.length];
-  }
-
-  return runFrames[0];
-}
-
-function drawSky() {
-  const scene = state.resources.images.sceneBackground;
-  if (scene) {
-    const scale = GROUND_Y / scene.height;
-    const drawWidth = scene.width * scale;
-
-    const tileIndexStart = Math.floor(state.skyOffset / drawWidth);
-    const wrappedOffset = ((state.skyOffset % drawWidth) + drawWidth) % drawWidth;
-    const tileStartX = -wrappedOffset;
-    const tileCount = Math.ceil(GAME_WIDTH / drawWidth) + 2;
-
-    for (let i = 0; i < tileCount; i += 1) {
-      const tileIndex = tileIndexStart + i;
-      const tileX = tileStartX + i * drawWidth;
-      const mirrored = tileIndex % 2 !== 0;
-
-      if (mirrored) {
-        ctx.save();
-        ctx.translate(tileX + drawWidth, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(scene, 0, 0, drawWidth, GROUND_Y);
-        ctx.restore();
-      } else {
-        ctx.drawImage(scene, tileX, 0, drawWidth, GROUND_Y);
-      }
-    }
-
-    return;
-  }
-
-  const gradient = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-  gradient.addColorStop(0, "#b9e7ff");
-  gradient.addColorStop(1, "#7ec3f2");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, GAME_WIDTH, GROUND_Y);
-}
-
-function drawSceneDecor() {
-  if (!state.resources.images.sceneBackground) {
-    return;
-  }
-
-  const treeLeft = state.resources.images.sceneTreeLeft;
-  const treeRight = state.resources.images.sceneTreeRight;
-  const bushLarge = state.resources.images.sceneBushLarge;
-  const bushMedium = state.resources.images.sceneBushMedium;
-  const bushSmall = state.resources.images.sceneBushSmall;
-  const lamp = state.resources.images.sceneLamp;
-
-  const scene = state.resources.images.sceneBackground;
-  const sceneScale = GROUND_Y / scene.height;
-  const sceneDrawWidth = scene.width * sceneScale;
-  const tileIndexStart = Math.floor(state.skyOffset / sceneDrawWidth);
-  const wrappedOffset = ((state.skyOffset % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth;
-  const tileStartX = -wrappedOffset;
-  const tileCount = Math.ceil(GAME_WIDTH / sceneDrawWidth) + 2;
-
-  function drawDecor(image, localX, localY, width, height, tileX, mirrored) {
-    if (!image) {
-      return;
-    }
-
-    if (!mirrored) {
-      ctx.drawImage(image, tileX + localX, localY, width, height);
-      return;
-    }
-
-    const mirroredX = tileX + (sceneDrawWidth - localX - width);
-    ctx.save();
-    ctx.translate(mirroredX + width, localY);
-    ctx.scale(-1, 1);
-    ctx.drawImage(image, 0, 0, width, height);
-    ctx.restore();
-  }
-
-  function drawDecorWithHeight(image, localX, bottomY, targetHeight, tileX, mirrored) {
-    if (!image) {
-      return;
-    }
-
-    const height = targetHeight;
-    const width = (image.width / image.height) * height;
-    drawDecor(image, localX, bottomY - height, width, height, tileX, mirrored);
-  }
-
-  for (let i = 0; i < tileCount; i += 1) {
-    const tileIndex = tileIndexStart + i;
-    const tileX = tileStartX + i * sceneDrawWidth;
-    const mirrored = tileIndex % 2 !== 0;
-
-    drawDecor(treeLeft, GAME_WIDTH - 1000, 0, 1000, 740, tileX, mirrored);
-    drawDecor(treeLeft, GAME_WIDTH - 600, 0, 1000, 740, tileX, mirrored);
-    drawDecor(lamp, GAME_WIDTH - 400, 40, 200, 700, tileX, mirrored);
-    drawDecor(treeLeft, GAME_WIDTH - 0, 0, 1000, 740, tileX, mirrored);
-    drawDecor(bushSmall, GAME_WIDTH - 600, 580, 165, 165, tileX, mirrored);
-    drawDecorWithHeight(bushMedium, GAME_WIDTH - 520, 748, 170, tileX, mirrored);
-    drawDecor(lamp, GAME_WIDTH + 200, 40, 200, 700, tileX, mirrored);
-    drawDecor(bushLarge, GAME_WIDTH - 450, 580, 220, 180, tileX, mirrored);
-    drawDecor(bushSmall, GAME_WIDTH + 150, 580, 165, 165, tileX, mirrored);
-    drawDecorWithHeight(bushMedium, GAME_WIDTH + 40, 748, 176, tileX, mirrored);
-    drawDecor(treeRight, GAME_WIDTH + 200, 0, 1000, 740, tileX, mirrored);
-    drawDecor(bushLarge, GAME_WIDTH + 300, 580, 220, 180, tileX, mirrored);
-    drawDecorWithHeight(bushMedium, GAME_WIDTH + 560, 748, 172, tileX, mirrored);
-    drawDecor(bushSmall, GAME_WIDTH + 900, 580, 165, 165, tileX, mirrored);
-    drawDecor(lamp, GAME_WIDTH + 900, 40, 200, 700, tileX, mirrored);
-    drawDecor(bushLarge, GAME_WIDTH + 1400, 580, 220, 180, tileX, mirrored);
-    drawDecorWithHeight(bushMedium, GAME_WIDTH + 1240, 748, 168, tileX, mirrored);
-  }
-}
-
-function drawGround() {
-  if (state.resources.images.sceneBackground) {
-    return;
-  }
-
-  ctx.fillStyle = "#1f2f3e";
-  ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
-
-  ctx.fillStyle = "#283f52";
-  for (let i = -1; i < GAME_WIDTH / 56 + 2; i += 1) {
-    const x = i * 56 - (state.groundOffset % 56);
-    ctx.fillRect(x, GROUND_Y + 42, 34, 11);
-  }
-}
-
-function drawPlayer() {
-  const spriteSheet = state.resources.images.playerSheet;
-  const frame = currentPlayerFrame();
-  const damageFlashActive = state.player.invincibilityMs > 0 && !state.player.blinkVisible;
-
-  if (!spriteSheet || !frame) {
-    ctx.fillStyle = damageFlashActive ? "#ff4a4a" : "#f2664b";
-    ctx.fillRect(state.player.x, state.player.y, state.player.width, state.player.height);
-    return;
-  }
-
-  const box = frameSourceBox(frame);
-  const targetHeight = state.player.height * playerRenderHeightMultiplier;
-  const drawScale = targetHeight / box.sourceH;
-  const fullWidth = box.sourceW * drawScale;
-  const fullHeight = box.sourceH * drawScale;
-  const fullX = state.player.x + (state.player.width - fullWidth) * 0.5;
-  const fullY = state.player.y + (state.player.height - fullHeight);
-  const drawX = fullX + box.sourceX * drawScale;
-  const drawY = fullY + box.sourceY * drawScale;
-  const drawWidth = frame.w * drawScale;
-  const drawHeight = frame.h * drawScale;
-
-  ctx.drawImage(
-    spriteSheet,
-    frame.x,
-    frame.y,
-    frame.w,
-    frame.h,
-    drawX,
-    drawY,
-    drawWidth,
-    drawHeight
-  );
-
-  if (damageFlashActive && playerFlashCtx) {
-    const flashPadding = 2;
-    const flashWidth = Math.max(1, Math.ceil(drawWidth + flashPadding * 2));
-    const flashHeight = Math.max(1, Math.ceil(drawHeight + flashPadding * 2));
-
-    if (playerFlashCanvas.width !== flashWidth || playerFlashCanvas.height !== flashHeight) {
-      playerFlashCanvas.width = flashWidth;
-      playerFlashCanvas.height = flashHeight;
-    } else {
-      playerFlashCtx.clearRect(0, 0, flashWidth, flashHeight);
-    }
-
-    playerFlashCtx.drawImage(
-      spriteSheet,
-      frame.x,
-      frame.y,
-      frame.w,
-      frame.h,
-      flashPadding,
-      flashPadding,
-      drawWidth,
-      drawHeight
-    );
-    playerFlashCtx.globalCompositeOperation = "source-in";
-    playerFlashCtx.fillStyle = "rgba(255, 58, 58, 0.62)";
-    playerFlashCtx.fillRect(0, 0, flashWidth, flashHeight);
-    playerFlashCtx.globalCompositeOperation = "source-over";
-
-    ctx.drawImage(playerFlashCanvas, drawX - flashPadding, drawY - flashPadding);
-  }
-}
-
-function drawEnemies(elapsedSeconds) {
-  const spriteSheet = state.resources.images.enemySheet;
-  const sequence = ASSETS.frames.enemyRun;
-  const frozenTick = state.frozenEnemyAnimationTick;
-  const useFrozenTick = state.mode === STATES.paused && Number.isFinite(frozenTick);
-
-  for (const enemy of state.enemies) {
-    if (!spriteSheet) {
-      ctx.fillStyle = "#263947";
-      ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-      continue;
-    }
-
-    const frameTick = useFrozenTick ? frozenTick : Math.floor(elapsedSeconds * 10);
-    const frame = sequence[(frameTick + enemy.animationOffset) % sequence.length];
-    const box = frameSourceBox(frame);
-    const drawScale = (enemy.scale || enemyCollisionScale) * enemyRenderScaleMultiplier;
-    const fullWidth = box.sourceW * drawScale;
-    const fullHeight = box.sourceH * drawScale;
-    const fullX = enemy.x + (enemy.width - fullWidth) * 0.5;
-    const fullY = enemy.y + (enemy.height - fullHeight);
-    const drawX = fullX + (box.sourceW - box.sourceX - frame.w) * drawScale;
-    const drawY = fullY + box.sourceY * drawScale;
-    const drawWidth = frame.w * drawScale;
-    const drawHeight = frame.h * drawScale;
-
-    // Enemy atlas frames face opposite run direction, so flip horizontally.
-    ctx.save();
-    ctx.translate(drawX + drawWidth, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(spriteSheet, frame.x, frame.y, frame.w, frame.h, 0, drawY, drawWidth, drawHeight);
-    ctx.restore();
-  }
-}
-
-function roundedRect(x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-}
-
-function drawObstacles(elapsedSeconds) {
-  const obstacleSprite = state.resources.images.obstacleSprite;
-  const obstacleGlow = state.resources.images.obstacleGlow;
-
-  for (const obstacle of state.obstacles) {
-    if (obstacleGlow) {
-      const pulse = 1 + Math.sin(elapsedSeconds * 3 + obstacle.pulseSeed) * 0.1;
-      const glowWidth = obstacle.width * pulse;
-      const glowHeight = obstacle.height * pulse;
-      const glowX = obstacle.x - (glowWidth - obstacle.width) * 0.5;
-      const glowY = obstacle.y - (glowHeight - obstacle.height);
-
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(obstacleGlow, glowX, glowY, glowWidth, glowHeight);
-      ctx.restore();
-    }
-
-    if (obstacleSprite) {
-      ctx.drawImage(obstacleSprite, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-      continue;
-    }
-
-    // Fallback shape if extracted obstacle sprite is unavailable.
-    const pulse = 1 + Math.sin(elapsedSeconds * 4 + obstacle.pulseSeed) * 0.05;
-    const width = obstacle.width * pulse;
-    const height = obstacle.height * pulse;
-    const x = obstacle.x - (width - obstacle.width) * 0.5;
-    const y = obstacle.y - (height - obstacle.height);
-
-    ctx.fillStyle = "rgba(255, 200, 64, 0.32)";
-    roundedRect(x, y, width, height, 14);
-    ctx.fill();
-  }
-}
-
-function drawCollectibles(elapsedSeconds) {
-  const icon = state.resources.images.collectibleIcon;
-  const paypalCard = state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
-
-  for (const collectible of state.collectibles) {
-    const bob = Math.sin(elapsedSeconds * 4 + collectible.bobSeed) * 10;
-    const y = collectible.y + bob;
-
-    if (collectible.collectibleType === "paypalCard") {
-      if (paypalCard) {
-        ctx.drawImage(paypalCard, collectible.x, y, collectible.width, collectible.height);
-        continue;
-      }
-
-      ctx.fillStyle = "#1756c6";
-      roundedRect(collectible.x, y, collectible.width, collectible.height * 0.68, 10);
-      ctx.fill();
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "700 26px GameFont";
-      ctx.fillText("P", collectible.x + collectible.width * 0.38, y + collectible.height * 0.46);
-      continue;
-    }
-
-    if (icon) {
-      ctx.drawImage(icon, collectible.x, y, collectible.width, collectible.height);
-      continue;
-    }
-
-    ctx.fillStyle = "#ffe170";
-    ctx.beginPath();
-    ctx.arc(
-      collectible.x + collectible.width * 0.5,
-      y + collectible.height * 0.5,
-      collectible.width * 0.5,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-  }
-}
-
-function drawRotatedImage(image, x, y, width, height, rotation, anchorX = 0.5, anchorY = 0.5) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-  ctx.drawImage(image, -width * anchorX, -height * anchorY, width, height);
-  ctx.restore();
-}
-
-function drawFinishLine() {
-  const finish = state.finishLine;
-  if (!finish) {
-    return;
-  }
-
-  const floorPattern = state.resources.images.finishFloorPattern;
-  const leftPole = state.resources.images.finishPoleLeft;
-  const rightPole = state.resources.images.finishPoleRight;
-  const leftTape = state.resources.images.finishTapeLeft;
-  const rightTape = state.resources.images.finishTapeRight;
-  const canUseSpriteFinish =
-    floorPattern && leftPole && rightPole && leftTape && rightTape;
-
-  if (canUseSpriteFinish) {
-    const floorWidth = floorPattern.width * 2;
-    const floorHeight = floorPattern.height * 2;
-    const leftPoleWidth = leftPole.width * finishPoleLeftScale;
-    const leftPoleHeight = leftPole.height * finishPoleLeftScale;
-    const rightPoleWidth = rightPole.width * finishPoleRightScale;
-    const rightPoleHeight = rightPole.height * finishPoleRightScale;
-    const leftBottomX = finish.x - 42;
-    const rightBottomX = finish.x + 74;
-    const polesBottomY = GROUND_Y - 2;
-    const leftTopY = polesBottomY - leftPoleHeight;
-    const rightTopY = polesBottomY - rightPoleHeight;
-    const leftTapeWidth = leftTape.width * finishTapeScaleX;
-    const leftTapeHeight = leftTape.height * finishTapeScaleY;
-    const rightTapeWidth = rightTape.width * finishTapeScaleX;
-    const rightTapeHeight = rightTape.height * finishTapeScaleY;
-    const leftTapeAnchorX = leftBottomX;
-    const leftTapeAnchorY = leftTopY + 40;
-    const rightTapeAnchorX = rightBottomX - 24;
-    const rightTapeAnchorY = rightTopY + 58;
-    const leftTapeRotation = finish.tapeBroken ? 1.05 : 0.4;
-    const rightTapeRotation = finish.tapeBroken ? -3.25 : -2.5;
-
-    ctx.drawImage(
-      floorPattern,
-      finish.x - floorWidth * 0.5,
-      GROUND_Y - 84,
-      floorWidth,
-      floorHeight
-    );
-
-    drawRotatedImage(
-      leftPole,
-      leftBottomX,
-      polesBottomY,
-      leftPoleWidth,
-      leftPoleHeight,
-      -Math.PI / 2,
-      0.5,
-      1
-    );
-    drawRotatedImage(
-      rightPole,
-      rightBottomX,
-      polesBottomY,
-      rightPoleWidth,
-      rightPoleHeight,
-      -Math.PI / 2,
-      0.5,
-      1
-    );
-    drawRotatedImage(
-      leftTape,
-      leftTapeAnchorX,
-      leftTapeAnchorY,
-      leftTapeWidth,
-      leftTapeHeight,
-      leftTapeRotation,
-      0,
-      0
-    );
-    drawRotatedImage(
-      rightTape,
-      rightTapeAnchorX,
-      rightTapeAnchorY,
-      rightTapeWidth,
-      rightTapeHeight,
-      rightTapeRotation,
-      0,
-      0
-    );
-    return;
-  }
-
-  const leftPoleX = finish.x - 50;
-  const rightPoleX = finish.x + 62;
-  const poleTopY = finish.y;
-
-  ctx.fillStyle = "#ffffff";
-  roundedRect(leftPoleX, poleTopY - 10, 16, 190, 6);
-  ctx.fill();
-  roundedRect(rightPoleX, poleTopY + 10, 16, 170, 6);
-  ctx.fill();
-
-  if (!finish.tapeBroken) {
-    ctx.strokeStyle = "#ebf6ff";
-    ctx.lineWidth = 11;
-    ctx.beginPath();
-    ctx.moveTo(leftPoleX + 8, poleTopY + 38);
-    ctx.lineTo(rightPoleX + 8, poleTopY + 58);
-    ctx.stroke();
-  } else {
-    ctx.strokeStyle = "#ebf6ff";
-    ctx.lineWidth = 8;
-
-    ctx.beginPath();
-    ctx.moveTo(leftPoleX + 8, poleTopY + 40);
-    ctx.lineTo(leftPoleX - 32, poleTopY + 88);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(rightPoleX + 8, poleTopY + 58);
-    ctx.lineTo(rightPoleX + 44, poleTopY + 94);
-    ctx.stroke();
-  }
-}
-
-function drawWarnings(elapsedSeconds) {
-  for (const warning of state.warningLabels) {
-    const pulse = 1 + Math.sin(elapsedSeconds * 8 + warning.pulseSeed) * 0.1;
-    const w = 166 * pulse;
-    const h = 52 * pulse;
-    const x = warning.x - w * 0.5;
-    const y = warning.y - h * 0.5;
-
-    ctx.fillStyle = "rgba(255, 191, 0, 0.94)";
-    roundedRect(x, y, w, h, 10);
-    ctx.fill();
-
-    ctx.strokeStyle = "#ea7b0a";
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    ctx.fillStyle = "#ff1f16";
-    ctx.font = "900 30px GameFont";
-    ctx.textAlign = "center";
-    ctx.fillText("AVOID!", warning.x, warning.y + 11);
-    ctx.textAlign = "start";
-  }
-}
-
-function drawConfetti() {
-  if (state.confettiParticles.length === 0) {
-    return;
-  }
-
-  ctx.save();
-
-  for (const particle of state.confettiParticles) {
-    if (!particle.image || particle.alpha <= 0) {
-      continue;
-    }
-
-    const width = particle.image.width * particle.scale;
-    const height = particle.image.height * particle.scale;
-    ctx.globalAlpha = particle.alpha;
-    ctx.translate(particle.x, particle.y);
-    ctx.rotate(particle.rotation);
-    ctx.drawImage(particle.image, -width * 0.5, -height * 0.5, width, height);
-    ctx.rotate(-particle.rotation);
-    ctx.translate(-particle.x, -particle.y);
-  }
-
-  ctx.restore();
-}
-
-function tutorialHandPulseScale(elapsedSeconds) {
-  const cycleSeconds = 1.1;
-  const phase = (elapsedSeconds % cycleSeconds) / cycleSeconds;
-  return 0.97 - 0.09 * Math.cos(phase * Math.PI * 2);
-}
-
-function drawPulsingHand(hand, x, y, width, height, elapsedSeconds) {
-  const scale = tutorialHandPulseScale(elapsedSeconds);
-  const anchorX = x + width * 0.5;
-  const anchorY = y + height * 0.7;
-
-  ctx.save();
-  ctx.translate(anchorX, anchorY);
-  ctx.scale(scale, scale);
-  ctx.drawImage(hand, -width * 0.5, -height * 0.7, width, height);
-  ctx.restore();
-}
-
-function drawTutorialHint(elapsedSeconds) {
-  if (state.mode !== STATES.paused) {
-    return;
-  }
-
-  ctx.fillStyle = "rgba(8, 20, 34, 0.72)";
-  roundedRect(GAME_WIDTH * 0.5 - 220, 148, 440, 82, 20);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 34px GameFont";
-  ctx.textAlign = "center";
-  ctx.fillText("Jump to avoid enemies", GAME_WIDTH * 0.5, 203);
-  ctx.textAlign = "start";
-
-  const hand = state.resources.images.tutorialHand;
-  if (hand) {
-    drawPulsingHand(hand, GAME_WIDTH * 0.5 - 50, GROUND_Y - 230, 100, 100, elapsedSeconds);
-  }
-}
-
-function renderCanvasFrame(elapsedSeconds) {
-  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-  drawSky();
-  drawSceneDecor();
-  drawGround();
-  drawCollectibles(elapsedSeconds);
-  drawObstacles(elapsedSeconds);
-  drawFinishLine();
-  drawEnemies(elapsedSeconds);
-  drawWarnings(elapsedSeconds);
-  drawPlayer();
-  drawConfetti();
-  drawTutorialHint(elapsedSeconds);
-}
-
-function createCanvasRenderer() {
-  return {
-    backend: "canvas",
-    init() {
-      return undefined;
-    },
-    render(frame) {
-      renderCanvasFrame(frame?.elapsedSeconds ?? 0);
-    },
-    destroy() {
-      return undefined;
-    }
-  };
-}
-
-function createRenderer(backend) {
-  if (backend === "pixi") {
-    return createPixiRenderer({
-      canvas,
-      width: GAME_WIDTH,
-      height: GAME_HEIGHT,
-      groundY: GROUND_Y,
-      onUnavailable() {
-        if (activeRenderer?.backend === "pixi") {
-          activeRenderer = createCanvasRenderer();
-        }
-      }
-    });
-  }
-
-  return createCanvasRenderer();
+function createRenderer() {
+  return createPixiRenderer({
+    canvas,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
+    groundY: GROUND_Y
+  });
 }
 
 function ensureRenderer() {
   if (!activeRenderer) {
-    activeRenderer = createRenderer(RENDER_BACKEND);
+    activeRenderer = createRenderer();
   }
 
   return activeRenderer;
@@ -1689,8 +1048,15 @@ function handlePrimaryInput(event) {
 
   event.preventDefault();
 
+  // Music exists in extracted assets, but the first autoplay attempt can be
+  // blocked or fail on some browsers. Retry on subsequent user gestures.
+  if (state.mode === STATES.running || state.mode === STATES.paused) {
+    playMusic();
+  }
+
   if (state.mode === STATES.intro) {
-    startRun();
+    playMusic();
+    startRun({ skipMusic: true });
     return;
   }
 
@@ -1713,9 +1079,20 @@ function handlePrimaryInput(event) {
   }
 }
 
+function handleMusicActivationFallback() {
+  if (
+    state.mode === STATES.intro ||
+    state.mode === STATES.running ||
+    state.mode === STATES.paused
+  ) {
+    playMusic();
+  }
+}
+
 startBtn.addEventListener("click", () => {
   if (state.mode === STATES.intro) {
-    startRun();
+    playMusic();
+    startRun({ skipMusic: true });
   }
 });
 
@@ -1728,6 +1105,7 @@ footerCta?.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", handlePrimaryInput, { passive: false });
+canvas.addEventListener("click", handleMusicActivationFallback, { passive: true });
 window.addEventListener("keydown", handlePrimaryInput, { passive: false });
 
 async function boot() {
@@ -1755,5 +1133,5 @@ window.addEventListener("beforeunload", () => {
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);
   }
-  clearEndTimers();
+  uiEffects.clearEndTimers();
 });
