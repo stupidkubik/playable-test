@@ -55,16 +55,6 @@ canvas.height = GAME_HEIGHT;
 
 const GROUND_Y = GAME_HEIGHT - PLAYER_CONFIG.groundOffset;
 
-const LOCAL_MEDIA_OVERRIDES = Object.freeze({
-  failBanner: "./download.png",
-  tutorialHand: "./download3.png",
-  hudCounter: "./download4.webp",
-  backdropPortrait: "./download.webp",
-  backdropLandscape: "./download.webp",
-  paypalCard: "./download1.webp",
-  lightsEffect: "./download2.png"
-});
-
 function firstFrameOrFallback(frames, fallback) {
   if (!frames || frames.length === 0) {
     return fallback;
@@ -97,6 +87,32 @@ const finishPoleLeftScale = 1.8;
 const finishPoleRightScale = 1.35;
 const finishTapeScaleX = 1.8;
 const finishTapeScaleY = 1;
+const confettiTextureKeys = [
+  "confettiParticle1",
+  "confettiParticle2",
+  "confettiParticle3",
+  "confettiParticle4",
+  "confettiParticle5",
+  "confettiParticle6"
+];
+const CONFETTI_CONFIG = {
+  PARTICLE_COUNT: 50,
+  LIFETIME: 5000,
+  FADE_START: 0.7,
+  SCALE_MIN: 0.8,
+  SCALE_MAX: 1.5,
+  BURST_SPEED_MIN: 12,
+  BURST_SPEED_MAX: 20,
+  BURST_ANGLE_SPREAD: 30,
+  SIDE_MARGIN: 50,
+  SIDE_SPAWN_HEIGHT: 0.7,
+  SIDE_SPAWN_SPREAD_Y: 200,
+  GRAVITY: 0.05,
+  AIR_RESISTANCE: 0.998,
+  WIND_X: 0,
+  ROTATION_SPEED_MIN: 0.02,
+  ROTATION_SPEED_MAX: 0.1
+};
 
 const state = {
   mode: STATES.loading,
@@ -148,7 +164,8 @@ const state = {
   balanceAnimationId: null,
   failTimeoutId: null,
   nextId: 1,
-  frozenEnemyAnimationTick: null
+  frozenEnemyAnimationTick: null,
+  confettiParticles: []
 };
 
 function allocateId() {
@@ -356,26 +373,6 @@ function createAudio(source, volume, loop = false) {
   return audio;
 }
 
-async function loadImageWithFallback(overrideUrl, fallbackDataUri) {
-  if (overrideUrl) {
-    try {
-      return await createImage(overrideUrl);
-    } catch {
-      // fall through to built-in data-uri
-    }
-  }
-
-  return createImage(fallbackDataUri);
-}
-
-async function loadOptionalImage(url) {
-  try {
-    return await createImage(url);
-  } catch {
-    return null;
-  }
-}
-
 function syncGameHeader(force = false) {
   const roundedScore = Math.floor(state.score);
 
@@ -401,26 +398,18 @@ function syncGameHeader(force = false) {
 async function loadResources() {
   const imageEntries = Object.entries(ASSETS.images);
   const loaded = await Promise.all(
-    imageEntries.map(async ([key, dataUri]) => [
-      key,
-      await loadImageWithFallback(LOCAL_MEDIA_OVERRIDES[key], dataUri)
-    ])
+    imageEntries.map(async ([key, dataUri]) => [key, await createImage(dataUri)])
   );
 
   state.resources.images = Object.fromEntries(loaded);
 
-  const localPaypalCard = await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.paypalCard);
-  const localLightsEffect = await loadOptionalImage(LOCAL_MEDIA_OVERRIDES.lightsEffect);
-
   state.resources.images.paypalCard =
     state.resources.images.paypalCardOriginal ||
-    localPaypalCard ||
     state.resources.images.collectiblePaypalCard ||
     null;
   state.resources.images.paypalCardCollectible =
     state.resources.images.collectiblePaypalCard || state.resources.images.paypalCard;
-  state.resources.images.lightsEffect =
-    state.resources.images.lightsEffectOriginal || localLightsEffect || null;
+  state.resources.images.lightsEffect = state.resources.images.lightsEffectOriginal || null;
 
   state.resources.audio = Object.fromEntries(
     Object.entries(ASSETS.audio).map(([key, value]) => [
@@ -512,6 +501,7 @@ function resetWorld() {
   state.skyOffset = 0;
   state.groundOffset = 0;
   state.frozenEnemyAnimationTick = null;
+  state.confettiParticles = [];
 
   resetPlayerPosition();
 
@@ -861,9 +851,109 @@ function startDeceleration() {
   }
 
   state.isDecelerating = true;
+  triggerFinishConfetti();
 
   if (state.finishLine) {
     state.finishLine.tapeBroken = true;
+  }
+}
+
+function confettiTextures() {
+  return confettiTextureKeys
+    .map((key) => state.resources.images[key])
+    .filter(Boolean);
+}
+
+function spawnConfettiParticle(textures, x, y, angleRadians, spreadRadians) {
+  if (textures.length === 0) {
+    return;
+  }
+
+  const image = textures[Math.floor(Math.random() * textures.length)];
+  const angle = angleRadians + (Math.random() - 0.5) * spreadRadians;
+  const speed =
+    CONFETTI_CONFIG.BURST_SPEED_MIN +
+    Math.random() * (CONFETTI_CONFIG.BURST_SPEED_MAX - CONFETTI_CONFIG.BURST_SPEED_MIN);
+  const rotationSpeed =
+    CONFETTI_CONFIG.ROTATION_SPEED_MIN +
+    Math.random() * (CONFETTI_CONFIG.ROTATION_SPEED_MAX - CONFETTI_CONFIG.ROTATION_SPEED_MIN);
+
+  state.confettiParticles.push({
+    image,
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    rotation: 0,
+    rotationSpeed: (Math.random() > 0.5 ? 1 : -1) * rotationSpeed,
+    scale:
+      CONFETTI_CONFIG.SCALE_MIN +
+      Math.random() * (CONFETTI_CONFIG.SCALE_MAX - CONFETTI_CONFIG.SCALE_MIN),
+    lifetime: 0,
+    maxLifetime: CONFETTI_CONFIG.LIFETIME,
+    alpha: 1
+  });
+}
+
+function burstConfettiSide(x, y, angleDeg, textures) {
+  const angleRadians = (angleDeg * Math.PI) / 180;
+  const spreadRadians = (CONFETTI_CONFIG.BURST_ANGLE_SPREAD * Math.PI) / 180;
+
+  for (let i = 0; i < CONFETTI_CONFIG.PARTICLE_COUNT; i += 1) {
+    spawnConfettiParticle(
+      textures,
+      x,
+      y + (Math.random() - 0.5) * CONFETTI_CONFIG.SIDE_SPAWN_SPREAD_Y,
+      angleRadians,
+      spreadRadians
+    );
+  }
+}
+
+function triggerFinishConfetti() {
+  const textures = confettiTextures();
+  if (textures.length === 0) {
+    return;
+  }
+
+  const spawnY = GAME_HEIGHT * CONFETTI_CONFIG.SIDE_SPAWN_HEIGHT;
+  burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures);
+  burstConfettiSide(GAME_WIDTH - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
+}
+
+function updateConfetti(deltaMs) {
+  if (state.confettiParticles.length === 0) {
+    return;
+  }
+
+  const frameStep = deltaMs / (1000 / 60);
+  const airResistance = Math.pow(CONFETTI_CONFIG.AIR_RESISTANCE, frameStep);
+
+  for (let i = state.confettiParticles.length - 1; i >= 0; i -= 1) {
+    const particle = state.confettiParticles[i];
+    particle.lifetime += deltaMs;
+
+    if (particle.lifetime >= particle.maxLifetime) {
+      state.confettiParticles.splice(i, 1);
+      continue;
+    }
+
+    particle.vy += CONFETTI_CONFIG.GRAVITY * frameStep;
+    particle.vx += CONFETTI_CONFIG.WIND_X * frameStep;
+    particle.vx *= airResistance;
+    particle.vy *= airResistance;
+    particle.x += particle.vx * frameStep;
+    particle.y += particle.vy * frameStep;
+    particle.rotation += particle.rotationSpeed * frameStep;
+
+    const progress = particle.lifetime / particle.maxLifetime;
+    if (progress > CONFETTI_CONFIG.FADE_START) {
+      const fadeProgress =
+        (progress - CONFETTI_CONFIG.FADE_START) / (1 - CONFETTI_CONFIG.FADE_START);
+      particle.alpha = Math.max(0, 1 - fadeProgress);
+    } else {
+      particle.alpha = 1;
+    }
   }
 }
 
@@ -1006,6 +1096,7 @@ function drawSceneDecor() {
   const treeLeft = state.resources.images.sceneTreeLeft;
   const treeRight = state.resources.images.sceneTreeRight;
   const bushLarge = state.resources.images.sceneBushLarge;
+  const bushMedium = state.resources.images.sceneBushMedium;
   const bushSmall = state.resources.images.sceneBushSmall;
   const lamp = state.resources.images.sceneLamp;
 
@@ -1035,16 +1126,38 @@ function drawSceneDecor() {
     ctx.restore();
   }
 
+  function drawDecorWithHeight(image, localX, bottomY, targetHeight, tileX, mirrored) {
+    if (!image) {
+      return;
+    }
+
+    const height = targetHeight;
+    const width = (image.width / image.height) * height;
+    drawDecor(image, localX, bottomY - height, width, height, tileX, mirrored);
+  }
+
   for (let i = 0; i < tileCount; i += 1) {
     const tileIndex = tileIndexStart + i;
     const tileX = tileStartX + i * sceneDrawWidth;
     const mirrored = tileIndex % 2 !== 0;
 
-    drawDecor(treeLeft, -120, -40, 430, 340, tileX, mirrored);
-    drawDecor(treeRight, GAME_WIDTH - 255, -40, 335, 340, tileX, mirrored);
-    drawDecor(lamp, GAME_WIDTH * 0.495, 140, 62, 250, tileX, mirrored);
-    drawDecor(bushSmall, -30, GROUND_Y - 110, 165, 165, tileX, mirrored);
-    drawDecor(bushLarge, GAME_WIDTH - 250, GROUND_Y - 125, 220, 180, tileX, mirrored);
+    drawDecor(treeLeft, GAME_WIDTH - 1000, 0, 1000, 740, tileX, mirrored);
+    drawDecor(treeLeft, GAME_WIDTH - 600, 0, 1000, 740, tileX, mirrored);
+    drawDecor(lamp, GAME_WIDTH - 400, 40, 200, 700, tileX, mirrored);
+    drawDecor(treeLeft, GAME_WIDTH - 0, 0, 1000, 740, tileX, mirrored);
+    drawDecor(bushSmall, GAME_WIDTH - 600, 580, 165, 165, tileX, mirrored);
+    drawDecorWithHeight(bushMedium, GAME_WIDTH - 520, 748, 170, tileX, mirrored);
+    drawDecor(lamp, GAME_WIDTH + 200, 40, 200, 700, tileX, mirrored);
+    drawDecor(bushLarge, GAME_WIDTH - 450, 580, 220, 180, tileX, mirrored);
+    drawDecor(bushSmall, GAME_WIDTH + 150, 580, 165, 165, tileX, mirrored);
+    drawDecorWithHeight(bushMedium, GAME_WIDTH + 40, 748, 176, tileX, mirrored);
+    drawDecor(treeRight, GAME_WIDTH + 200, 0, 1000, 740, tileX, mirrored);
+    drawDecor(bushLarge, GAME_WIDTH + 300, 580, 220, 180, tileX, mirrored);
+    drawDecorWithHeight(bushMedium, GAME_WIDTH + 560, 748, 172, tileX, mirrored);
+    drawDecor(bushSmall, GAME_WIDTH + 900, 580, 165, 165, tileX, mirrored);
+    drawDecor(lamp, GAME_WIDTH + 900, 40, 200, 700, tileX, mirrored);
+    drawDecor(bushLarge, GAME_WIDTH + 1400, 580, 220, 180, tileX, mirrored);
+    drawDecorWithHeight(bushMedium, GAME_WIDTH + 1240, 748, 168, tileX, mirrored);
   }
 }
 
@@ -1410,6 +1523,31 @@ function drawWarnings(elapsedSeconds) {
   }
 }
 
+function drawConfetti() {
+  if (state.confettiParticles.length === 0) {
+    return;
+  }
+
+  ctx.save();
+
+  for (const particle of state.confettiParticles) {
+    if (!particle.image || particle.alpha <= 0) {
+      continue;
+    }
+
+    const width = particle.image.width * particle.scale;
+    const height = particle.image.height * particle.scale;
+    ctx.globalAlpha = particle.alpha;
+    ctx.translate(particle.x, particle.y);
+    ctx.rotate(particle.rotation);
+    ctx.drawImage(particle.image, -width * 0.5, -height * 0.5, width, height);
+    ctx.rotate(-particle.rotation);
+    ctx.translate(-particle.x, -particle.y);
+  }
+
+  ctx.restore();
+}
+
 function tutorialHandPulseScale(elapsedSeconds) {
   const cycleSeconds = 1.1;
   const phase = (elapsedSeconds % cycleSeconds) / cycleSeconds;
@@ -1473,10 +1611,13 @@ function render(elapsedSeconds) {
   drawEnemies(elapsedSeconds);
   drawWarnings(elapsedSeconds);
   drawPlayer();
+  drawConfetti();
   drawTutorialHint(elapsedSeconds);
 }
 
 function update(deltaSeconds, deltaMs) {
+  updateConfetti(deltaMs);
+
   if (state.mode === STATES.running && state.isRunning) {
     updateRunning(deltaSeconds, deltaMs);
     return;
