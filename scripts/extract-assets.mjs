@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 
-const sourcePath = path.resolve(rootDir, "file.html");
+const sourcePath = path.resolve(rootDir, "original", "file.html");
 const outputPath = path.resolve(rootDir, "src/assets/extractedAssets.js");
 
 function escapeRegExp(value) {

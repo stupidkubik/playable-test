@@ -1,2 +1,4 @@
 dist/playable.html
 .DS_Store
+node_modules/
+.tmp_extracted_images/
