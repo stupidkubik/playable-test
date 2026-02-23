@@ -434,58 +434,6 @@ export const ASSETS = {
         "sourceH": 314
       }
     ],
-    "playerHurt": [
-      {
-        "x": 152,
-        "y": 491,
-        "w": 128,
-        "h": 255,
-        "sourceX": 120,
-        "sourceY": 30,
-        "sourceW": 358,
-        "sourceH": 314
-      },
-      {
-        "x": 1,
-        "y": 1,
-        "w": 168,
-        "h": 243,
-        "sourceX": 89,
-        "sourceY": 42,
-        "sourceW": 358,
-        "sourceH": 314
-      },
-      {
-        "x": 1,
-        "y": 1,
-        "w": 168,
-        "h": 243,
-        "sourceX": 89,
-        "sourceY": 42,
-        "sourceW": 358,
-        "sourceH": 314
-      },
-      {
-        "x": 1,
-        "y": 246,
-        "w": 167,
-        "h": 243,
-        "sourceX": 90,
-        "sourceY": 42,
-        "sourceW": 358,
-        "sourceH": 314
-      },
-      {
-        "x": 1,
-        "y": 739,
-        "w": 143,
-        "h": 250,
-        "sourceX": 105,
-        "sourceY": 35,
-        "sourceW": 358,
-        "sourceH": 314
-      }
-    ],
     "enemyRun": [
       {
         "x": 3,

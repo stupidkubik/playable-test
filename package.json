@@ -8,5 +8,8 @@
     "test": "node --test",
     "extract:assets": "node scripts/extract-assets.mjs",
     "build": "node scripts/extract-assets.mjs && node scripts/build-single-html.mjs"
+  },
+  "dependencies": {
+    "pixi.js": "^8.16.0"
   }
 }

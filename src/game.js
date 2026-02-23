@@ -19,6 +19,7 @@ import {
   spawnDistanceToPx
 } from "./gameLogic.js";
 import { ASSETS } from "./assets/extractedAssets.js";
+import { createPixiRenderer } from "./renderers/pixiRenderer.js";
 
 const canvas = document.querySelector("#game");
 const ctx = canvas.getContext("2d");
@@ -87,6 +88,8 @@ const finishPoleLeftScale = 1.8;
 const finishPoleRightScale = 1.35;
 const finishTapeScaleX = 1.8;
 const finishTapeScaleY = 1;
+const requestedRenderer = new URLSearchParams(window.location.search).get("renderer");
+const RENDER_BACKEND = requestedRenderer === "pixi" ? "pixi" : "canvas";
 const confettiTextureKeys = [
   "confettiParticle1",
   "confettiParticle2",
@@ -167,6 +170,7 @@ const state = {
   frozenEnemyAnimationTick: null,
   confettiParticles: []
 };
+let activeRenderer = null;
 
 function allocateId() {
   const id = state.nextId;
@@ -1587,20 +1591,8 @@ function drawTutorialHint(elapsedSeconds) {
   }
 }
 
-function drawIntroHint() {
-  if (state.mode !== STATES.intro) {
-    return;
-  }
-
-  const hand = state.resources.images.tutorialHand;
-  if (hand) {
-    ctx.drawImage(hand, GAME_WIDTH * 0.5 - 52, GROUND_Y - 230, 104, 104);
-  }
-}
-
-function render(elapsedSeconds) {
+function renderCanvasFrame(elapsedSeconds) {
   ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  syncGameHeader();
 
   drawSky();
   drawSceneDecor();
@@ -1613,6 +1605,55 @@ function render(elapsedSeconds) {
   drawPlayer();
   drawConfetti();
   drawTutorialHint(elapsedSeconds);
+}
+
+function createCanvasRenderer() {
+  return {
+    backend: "canvas",
+    init() {
+      return undefined;
+    },
+    render(frame) {
+      renderCanvasFrame(frame?.elapsedSeconds ?? 0);
+    },
+    destroy() {
+      return undefined;
+    }
+  };
+}
+
+function createRenderer(backend) {
+  if (backend === "pixi") {
+    return createPixiRenderer({
+      canvas,
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
+      groundY: GROUND_Y,
+      onUnavailable() {
+        if (activeRenderer?.backend === "pixi") {
+          activeRenderer = createCanvasRenderer();
+        }
+      }
+    });
+  }
+
+  return createCanvasRenderer();
+}
+
+function ensureRenderer() {
+  if (!activeRenderer) {
+    activeRenderer = createRenderer(RENDER_BACKEND);
+  }
+
+  return activeRenderer;
+}
+
+function render(elapsedSeconds) {
+  syncGameHeader();
+  ensureRenderer().render({
+    elapsedSeconds,
+    state
+  });
 }
 
 function update(deltaSeconds, deltaMs) {
@@ -1694,6 +1735,7 @@ async function boot() {
   startCopy.textContent = "Loading extracted assets...";
 
   try {
+    await ensureRenderer().init?.();
     await loadResources();
     resetWorld();
   } catch {
@@ -1709,6 +1751,7 @@ boot();
 
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(state.rafId);
+  activeRenderer?.destroy?.();
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);
   }

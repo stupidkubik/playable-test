@@ -136,7 +136,6 @@ const assets = {
     playerIdle: Array.from({ length: 18 }, (_, index) => findFrame(source, `idle_${index}`)),
     playerRun: Array.from({ length: 8 }, (_, index) => findFrame(source, `run_${index}`)),
     playerJump: Array.from({ length: 10 }, (_, index) => findFrame(source, `jump_${index}`)),
-    playerHurt: Array.from({ length: 5 }, (_, index) => findFrame(source, `hurt_${index}`)),
     enemyRun: Array.from({ length: 14 }, (_, index) => findFrame(source, `frame_${index}`))
   }
 };
