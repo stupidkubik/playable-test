@@ -2,12 +2,12 @@ export const GAME_WIDTH = 720;
 export const GAME_HEIGHT = 1280;
 
 export const PLAYER_CONFIG = Object.freeze({
-  xPosition: 0.18,
+  xPosition: 0.1,
   groundOffset: 280,
   jumpHeight: 300,
   jumpDurationMs: 800,
   invincibilityMs: 500,
-  scale: 0.54,
+  scale: 0.756,
   animationSpeed: 0.15
 });
 

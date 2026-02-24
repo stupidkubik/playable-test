@@ -69,7 +69,7 @@ const playerBaseFrame = firstFrameOrFallback(
 const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
-const enemyCollisionScale = 0.44;
+const enemyCollisionScale = 0.616;
 const collectibleBaseScale = 0.15;
 const collectibleFallbackSourceSize = Object.freeze({
   dollar: { width: 1024, height: 1024 },
@@ -577,7 +577,7 @@ function collectibleRenderSize(type) {
 
   if (type === "paypalCard") {
     return {
-      width: baseWidth,
+      width: baseWidth * 0.8,
       height: Math.max(1, Math.round(baseHeight * 0.5))
     };
   }
@@ -617,7 +617,7 @@ function spawnFinishLine() {
     tapeBreakX: 0
   };
 
-  state.finishLine.tapeBreakX = state.finishLine.x - 300;
+  state.finishLine.tapeBreakX = state.finishLine.x - 500;
   state.finishLineSpawned = true;
 }
 

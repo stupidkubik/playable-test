@@ -309,23 +309,20 @@ function syncDecorLayer(PIXI, textureCache, layers, sceneState, width, groundY) 
     const tileX = tileStartX + i * sceneDrawWidth;
     const mirrored = tileIndex % 2 !== 0;
 
-    addSprite(treeLeft, width - 1000, 0, 1000, 740, mirrored, tileX);
-    addSprite(treeLeft, width - 600, 0, 1000, 740, mirrored, tileX);
-    addSprite(lamp, width - 400, 40, 200, 700, mirrored, tileX);
-    addSprite(treeLeft, width - 0, 0, 1000, 740, mirrored, tileX);
-    addSprite(bushSmall, width - 600, 580, 165, 165, mirrored, tileX);
-    addSpriteByHeight(bushMedium, bushMediumImage, width - 520, 748, 170, mirrored, tileX);
-    addSprite(lamp, width + 200, 40, 200, 700, mirrored, tileX);
-    addSprite(bushLarge, width - 450, 580, 220, 180, mirrored, tileX);
-    addSprite(bushSmall, width + 150, 580, 165, 165, mirrored, tileX);
-    addSpriteByHeight(bushMedium, bushMediumImage, width + 40, 748, 176, mirrored, tileX);
-    addSprite(treeRight, width + 200, 0, 1000, 740, mirrored, tileX);
-    addSprite(bushLarge, width + 300, 580, 220, 180, mirrored, tileX);
-    addSpriteByHeight(bushMedium, bushMediumImage, width + 560, 748, 172, mirrored, tileX);
-    addSprite(bushSmall, width + 900, 580, 165, 165, mirrored, tileX);
-    addSprite(lamp, width + 900, 40, 200, 700, mirrored, tileX);
-    addSprite(bushLarge, width + 1400, 580, 220, 180, mirrored, tileX);
-    addSpriteByHeight(bushMedium, bushMediumImage, width + 1240, 748, 168, mirrored, tileX);
+    addSprite(treeLeft, width - 1100, -40, 1000, 740, mirrored, tileX);
+    addSprite(treeLeft, width - 600, -40, 1000, 740, mirrored, tileX);
+    addSprite(lamp, width - 400, 0, 200, 700, mirrored, tileX);
+    addSprite(bushSmall, width - 600, 535, 165, 165, mirrored, tileX);
+    addSprite(bushLarge, width - 450, 530, 220, 180, mirrored, tileX);
+    addSprite(treeLeft, width - 0, -40, 1000, 740, mirrored, tileX);
+    addSprite(bushMedium, width + 40, 530, 148, 176, mirrored, tileX);
+    addSprite(lamp, width + 200, 0, 200, 700, mirrored, tileX);
+    addSprite(treeRight, width + 400, -40, 1000, 740, mirrored, tileX);
+    addSprite(bushLarge, width + 300, 530, 220, 180, mirrored, tileX);
+    addSprite(bushMedium, width + 560, 530, 148, 172, mirrored, tileX);
+    addSprite(bushSmall, width + 900, 535, 165, 165, mirrored, tileX);
+    addSprite(lamp, width + 1200, 0, 200, 700, mirrored, tileX);
+    addSprite(bushLarge, width + 1400, 530, 220, 180, mirrored, tileX);
   }
 }
 
@@ -618,9 +615,9 @@ function syncFinishLayer(PIXI, textureCache, layers, sceneState, groundY) {
     const leftPoleHeight = images.finishPoleLeft.height * finishPoleLeftScale;
     const rightPoleWidth = images.finishPoleRight.width * finishPoleRightScale;
     const rightPoleHeight = images.finishPoleRight.height * finishPoleRightScale;
-    const leftBottomX = finish.x - 42;
-    const rightBottomX = finish.x + 74;
-    const polesBottomY = groundY - 2;
+    const leftBottomX = finish.x - 360;
+    const rightBottomX = finish.x - 240;
+    const polesBottomY = groundY - 100;
     const leftTopY = polesBottomY - leftPoleHeight;
     const rightTopY = polesBottomY - rightPoleHeight;
     const leftTapeWidth = images.finishTapeLeft.width * finishTapeScaleX;
