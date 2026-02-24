@@ -74,7 +74,7 @@ export const SPAWN_SEQUENCE = Object.freeze([
   { type: "collectible", distance: 11, yOffset: 80 },
   { type: "collectible", distance: 11.2, yOffset: 180 },
   { type: "collectible", distance: 11.4, yOffset: 80 },
-  { type: "obstacle", distance: 12 },
+  { type: "obstacle", distance: 12, warningLabel: true },
   { type: "enemy", distance: 12.6 },
   { type: "collectible", distance: 13 },
   { type: "collectible", distance: 13.2, yOffset: 100 },
@@ -88,7 +88,7 @@ export const SPAWN_SEQUENCE = Object.freeze([
   { type: "collectible", distance: 15.8, yOffset: 260 },
   { type: "collectible", distance: 16, yOffset: 180 },
   { type: "collectible", distance: 16.2, yOffset: 80 },
-  { type: "obstacle", distance: 16.5 },
+  { type: "obstacle", distance: 16.5, warningLabel: true },
   { type: "finish", distance: 18 }
 ]);
 
