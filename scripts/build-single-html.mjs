@@ -14,6 +14,7 @@ const logicPath = path.resolve(rootDir, "src/gameLogic.js");
 const uiEffectsPath = path.resolve(rootDir, "src/uiEffects.js");
 const renderersDir = path.resolve(rootDir, "src/renderers");
 const gamePath = path.resolve(rootDir, "src/game.js");
+const pixiPath = path.resolve(rootDir, "node_modules/pixi.js/dist/pixi.min.js");
 const outputPath = path.resolve(distDir, "playable.html");
 
 const rendererFiles = await fs
@@ -23,12 +24,13 @@ const rendererFiles = await fs
 
 const rendererPaths = rendererFiles.map((file) => path.resolve(renderersDir, file));
 
-const [indexHtml, css, assets, logic, uiEffects, ...sources] = await Promise.all([
+const [indexHtml, css, assets, logic, uiEffects, pixiRuntime, ...sources] = await Promise.all([
   fs.readFile(indexPath, "utf8"),
   fs.readFile(cssPath, "utf8"),
   fs.readFile(assetsPath, "utf8"),
   fs.readFile(logicPath, "utf8"),
   fs.readFile(uiEffectsPath, "utf8"),
+  fs.readFile(pixiPath, "utf8"),
   ...rendererPaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(gamePath, "utf8")
 ]);
@@ -40,15 +42,18 @@ const stripLocalImports = (source) =>
 const cleanedUiEffects = stripLocalImports(uiEffects);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
 const cleanedGame = stripLocalImports(game);
+const escapeInlineScript = (source) => source.replace(/<\/script>/gi, "<\\/script>");
 const bundle = `${assets}\n\n${logic}\n\n${cleanedUiEffects}\n\n${cleanedRendererSources.join(
   "\n\n"
 )}\n\n${cleanedGame}`.replace(/export\s+/g, "");
+const inlinedPixi = escapeInlineScript(pixiRuntime);
+const inlinedBundle = escapeInlineScript(bundle);
 
 let html = indexHtml;
 html = html.replace('<link rel="stylesheet" href="./src/style.css" />', `<style>\n${css}\n</style>`);
 html = html.replace(
   '<script type="module" src="./src/game.js"></script>',
-  `<script type="module">\n${bundle}\n</script>`
+  `<script>\n${inlinedPixi}\n</script>\n<script type="module">\n${inlinedBundle}\n</script>`
 );
 
 await fs.mkdir(distDir, { recursive: true });

@@ -2,6 +2,11 @@ import { STATES } from "../gameLogic.js";
 import { ASSETS } from "../assets/extractedAssets.js";
 
 let pixiGlobalPromise = null;
+const PIXI_SCRIPT_SOURCES = [
+  "/node_modules/pixi.js/dist/pixi.min.js",
+  "./node_modules/pixi.js/dist/pixi.min.js",
+  "https://cdn.jsdelivr.net/npm/pixi.js@8.16.0/dist/pixi.min.js"
+];
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -11,10 +16,21 @@ function loadScript(src) {
         resolve();
         return;
       }
+      if (existing.dataset.failed === "true") {
+        reject(new Error("Pixi script failed to load"));
+        return;
+      }
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Pixi script failed to load")), {
-        once: true
-      });
+      existing.addEventListener(
+        "error",
+        () => {
+          existing.dataset.failed = "true";
+          reject(new Error("Pixi script failed to load"));
+        },
+        {
+          once: true
+        }
+      );
       return;
     }
 
@@ -30,9 +46,16 @@ function loadScript(src) {
       },
       { once: true }
     );
-    script.addEventListener("error", () => reject(new Error("Pixi script failed to load")), {
-      once: true
-    });
+    script.addEventListener(
+      "error",
+      () => {
+        script.dataset.failed = "true";
+        reject(new Error("Pixi script failed to load"));
+      },
+      {
+        once: true
+      }
+    );
     document.head.appendChild(script);
   });
 }
@@ -43,11 +66,26 @@ async function getPixiGlobal() {
   }
 
   if (!pixiGlobalPromise) {
-    pixiGlobalPromise = loadScript("/node_modules/pixi.js/dist/pixi.min.js").then(() => {
-      if (!globalThis.PIXI) {
-        throw new Error("window.PIXI not found after script load");
+    pixiGlobalPromise = (async () => {
+      let lastError = null;
+
+      for (const src of PIXI_SCRIPT_SOURCES) {
+        try {
+          await loadScript(src);
+          if (!globalThis.PIXI) {
+            throw new Error("window.PIXI not found after script load");
+          }
+          return globalThis.PIXI;
+        } catch (error) {
+          lastError = error;
+        }
       }
-      return globalThis.PIXI;
+
+      throw lastError || new Error("Pixi script failed to load");
+    })().catch((error) => {
+      // Allow a new attempt later (e.g. temporary network error or script path issue fixed).
+      pixiGlobalPromise = null;
+      throw error;
     });
   }
 
