@@ -710,6 +710,7 @@ canvas {
    Remove `force-portrait` from <html> to restore automatic landscape CSS. */
 @media (orientation: landscape) {
   html.force-portrait .app-shell {
+    height: auto;
     width: min(100vw, 430px);
     max-height: 100vh;
     aspect-ratio: 9 / 19.5;

@@ -2,11 +2,23 @@ import { STATES } from "../gameLogic.js";
 import { ASSETS } from "../assets/extractedAssets.js";
 
 let pixiGlobalPromise = null;
-const PIXI_SCRIPT_SOURCES = [
-  "/node_modules/pixi.js/dist/pixi.min.js",
-  "./node_modules/pixi.js/dist/pixi.min.js",
-  "https://cdn.jsdelivr.net/npm/pixi.js@8.16.0/dist/pixi.min.js"
-];
+const PIXI_CDN_SRC = "https://cdn.jsdelivr.net/npm/pixi.js@8.16.0/dist/pixi.min.js";
+
+function pixiScriptSources() {
+  const protocol = globalThis.location?.protocol || "";
+  const host = globalThis.location?.host || "";
+  const isHostedStatic = protocol === "file:" || host.endsWith(".github.io");
+
+  if (isHostedStatic) {
+    return [PIXI_CDN_SRC];
+  }
+
+  return [
+    "/node_modules/pixi.js/dist/pixi.min.js",
+    "./node_modules/pixi.js/dist/pixi.min.js",
+    PIXI_CDN_SRC
+  ];
+}
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -69,7 +81,7 @@ async function getPixiGlobal() {
     pixiGlobalPromise = (async () => {
       let lastError = null;
 
-      for (const src of PIXI_SCRIPT_SOURCES) {
+      for (const src of pixiScriptSources()) {
         try {
           await loadScript(src);
           if (!globalThis.PIXI) {
