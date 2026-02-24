@@ -21,6 +21,22 @@ npm run dev
 - `npm test` — тесты базовой логики (`node --test`).
 - `npm run extract:assets` — генерация `src/assets/extractedAssets.js` из `original/file.html`.
 - `npm run build` — extraction + сборка `dist/playable.html`.
+- `npm run build:pages` — сборка playable + подготовка `docs/playable/index.html` для GitHub Pages.
+
+## Публикация на GitHub Pages (Jekyll)
+
+В проекте настроены:
+
+- `_config.yml` — конфигурация Jekyll (источник сайта: `docs/`);
+- `docs/index.md` — главная страница Pages;
+- `.github/workflows/pages.yml` — CI/CD workflow деплоя на GitHub Pages;
+- `scripts/prepare-pages.mjs` — копирование `dist/playable.html` в `docs/playable/index.html`.
+
+Что нужно включить в GitHub:
+
+1. Открыть `Settings` → `Pages`.
+2. В разделе `Build and deployment` выбрать `Source: GitHub Actions`.
+3. Запушить изменения в `main` — workflow сам соберёт playable и задеплоит сайт.
 
 ## Структура проекта
 

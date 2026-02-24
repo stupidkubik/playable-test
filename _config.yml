@@ -1,0 +1,9 @@
+title: Runner Playable Clone
+description: Playable runner demo (GitHub Pages + Jekyll)
+lang: ru
+theme: minima
+markdown: kramdown
+source: docs
+exclude:
+  - Gemfile
+  - Gemfile.lock
