@@ -2,7 +2,7 @@
 
 Клон playable-креатива по референсу: [playbox.play.plbx.ai/playoff/runner](https://playbox.play.plbx.ai/playoff/runner).
 
-Проект собран как легкий vanilla JS-раннер с одним canvas, локальными тестами логики и сборкой в single HTML.
+Проект собран как lightweight playable на чистом JS с `Pixi.js` (v8) для рендера, DOM-оверлеями для UI и сборкой в single HTML.
 
 ## Быстрый старт
 
@@ -19,18 +19,21 @@ npm run dev
 
 - `npm run dev` - локальный сервер разработки.
 - `npm test` - тесты базовой логики (`node --test`).
-- `npm run extract:assets` - генерация `src/assets/extractedAssets.js` из `file.html`.
+- `npm run extract:assets` - генерация `src/assets/extractedAssets.js` из `original/file.html`.
 - `npm run build` - extraction + сборка `dist/playable.html`.
 
 ## Структура
 
 - `index.html` - корневая разметка и контейнеры экранов.
-- `src/game.js` - игровой цикл, рендер, события, UI, загрузка ассетов.
+- `src/game.js` - игровой цикл, состояние, спавн, коллизии, input, загрузка ассетов.
 - `src/gameLogic.js` - чистая логика (константы, hitbox-функции, экономика, spawn).
+- `src/renderers/pixiRenderer.js` - рендер сцены/сущностей в Pixi.js.
+- `src/uiEffects.js` - DOM/HUD анимации (end screen, flying collectibles, countdown).
 - `src/style.css` - стили HUD, оверлеев, футера и эффектов.
 - `src/assets/extractedAssets.js` - сгенерированный модуль с data-uri и кадрами.
-- `scripts/extract-assets.mjs` - парсинг ассетов и frame-метаданных из `file.html`.
+- `scripts/extract-assets.mjs` - парсинг ассетов и frame-метаданных из `original/file.html`.
 - `scripts/build-single-html.mjs` - упаковка в один HTML.
+- `original/` - сохранённые исходные HTML-файлы референса.
 - `test/gameLogic.test.js` - unit-тесты логики.
 
 ## Как работает игра
@@ -41,7 +44,7 @@ npm run dev
 2. Спавн сущностей по `SPAWN_SEQUENCE`.
 3. Движение врагов, препятствий, коллектаблов.
 4. Проверка столкновений и апдейт HP/score.
-5. Рендер сцены, сущностей, HUD и оверлеев.
+5. Рендер сцены через Pixi + DOM UI/оверлеи.
 
 Ключевые состояния (`STATES`):
 
@@ -66,7 +69,7 @@ npm run dev
 - `extract-assets.mjs` теперь вытаскивает для каждого кадра:
   - `sourceX`, `sourceY`
   - `sourceW`, `sourceH`
-- рендер игрока и врага в `game.js` строится через virtual source box с якорем по низу/центру.
+- рендер игрока и врага в `src/renderers/pixiRenderer.js` строится через frame/source metadata атласа.
 
 Результат: анимация заметно стабильнее и ближе к оригиналу.
 
@@ -80,12 +83,11 @@ npm run dev
 - `ECONOMY_CONFIG` - деньги/награды.
 - `SPAWN_SEQUENCE` - сценарий появления сущностей.
 
-Визуальные рендер-параметры в `src/game.js`:
+Визуальные рендер-параметры:
 
-- `playerRenderHeightMultiplier`
-- `enemyCollisionScale`
-- `enemyRenderScaleMultiplier`
-- параметры окружения/фона/декора.
+- `src/renderers/pixiRenderer.js` - позиционирование/слои/отрисовка спрайтов и FX.
+- `src/style.css` - HUD, оверлеи, футер, CTA и DOM-анимации.
+- `src/game.js` - размеры/scale отдельных сущностей (например obstacle/collectible spawn box).
 
 ## Текущий статус
 
@@ -94,6 +96,8 @@ npm run dev
 - стартовый экран, игровой ран, win/lose экраны;
 - HUD (жизни/счет), футер, CTA;
 - игрок, враг, препятствия, коллектаблы;
-- парралакс/сцена и базовая референс-логика.
+- парралакс/сцена и базовая референс-логика;
+- Pixi-only рантайм (legacy canvas удалён из рабочего пути);
+- tutorial pause / confetti / flying collectible → HUD / музыка из extracted assets.
 
 Проект подходит как тестовый прототип под дальнейшую точную подгонку под референс.

@@ -3,7 +3,6 @@ import {
   GAME_WIDTH,
   PLAYER_CONFIG,
   SPEED_CONFIG,
-  HITBOX_CONFIG,
   ECONOMY_CONFIG,
   SPAWN_SEQUENCE,
   STATES,
@@ -72,10 +71,6 @@ const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
 const enemyCollisionScale = 0.44;
 const collectibleBaseScale = 0.15;
-const collectibleTypeScale = Object.freeze({
-  dollar: collectibleBaseScale,
-  paypalCard: collectibleBaseScale * 1.2
-});
 const collectibleFallbackSourceSize = Object.freeze({
   dollar: { width: 1024, height: 1024 },
   paypalCard: { width: 800, height: 200 }
@@ -571,7 +566,7 @@ function collectibleRenderSize(type) {
   // Use a common pickup footprint based on the money icon, but render the
   // PayPal card as a flatter badge so it does not look stretched vertically.
   const fallbackSize = collectibleFallbackSourceSize.dollar;
-  const scale = collectibleTypeScale.dollar;
+  const scale = collectibleBaseScale;
   const { width: sourceWidth, height: sourceHeight } = imageIntrinsicSize(
     state.resources.images.collectibleIcon,
     fallbackSize
