@@ -864,6 +864,7 @@ export function createPixiRenderer(options = {}) {
   let originalCanvasInlineBackground = "";
   let originalCanvasInlinePosition = "";
   let originalCanvasInlineZIndex = "";
+  let lastAppliedPixelRatio = null;
 
   function warnUnavailableOnce(reason) {
     if (fallbackNoticeShown) {
@@ -881,6 +882,40 @@ export function createPixiRenderer(options = {}) {
     canvas.style.background = originalCanvasInlineBackground;
     canvas.style.position = originalCanvasInlinePosition;
     canvas.style.zIndex = originalCanvasInlineZIndex;
+  }
+
+  function applyViewportStylesToPixiCanvas() {
+    if (!pixiCanvas) {
+      return;
+    }
+
+    pixiCanvas.style.inset = "";
+    pixiCanvas.style.left = "var(--game-viewport-x, 0px)";
+    pixiCanvas.style.top = "var(--game-viewport-y, 0px)";
+    pixiCanvas.style.width = "var(--game-viewport-w, 100%)";
+    pixiCanvas.style.height = "var(--game-viewport-h, 100%)";
+  }
+
+  function syncRendererResolution(viewportState) {
+    if (!app?.renderer) {
+      return;
+    }
+
+    const nextPixelRatio = Math.min(2, Math.max(1, viewportState?.pixelRatio || globalThis.devicePixelRatio || 1));
+    if (lastAppliedPixelRatio === nextPixelRatio) {
+      return;
+    }
+
+    lastAppliedPixelRatio = nextPixelRatio;
+
+    try {
+      if ("resolution" in app.renderer) {
+        app.renderer.resolution = nextPixelRatio;
+      }
+      app.renderer.resize(width, height);
+    } catch {
+      // Best-effort: older/newer Pixi APIs may differ in how resolution is updated.
+    }
   }
 
   return {
@@ -913,13 +948,11 @@ export function createPixiRenderer(options = {}) {
         pixiCanvas = app.canvas;
         pixiCanvas.dataset.renderer = "pixi";
         pixiCanvas.style.position = "absolute";
-        pixiCanvas.style.inset = "0";
-        pixiCanvas.style.width = "100%";
-        pixiCanvas.style.height = "100%";
         pixiCanvas.style.display = "block";
         pixiCanvas.style.zIndex = "0";
         pixiCanvas.style.pointerEvents = "none";
         pixiCanvas.style.background = "transparent";
+        applyViewportStylesToPixiCanvas();
 
         originalCanvasInlineOpacity = canvas.style.opacity;
         originalCanvasInlineBackground = canvas.style.background;
@@ -928,13 +961,14 @@ export function createPixiRenderer(options = {}) {
 
         canvas.style.opacity = "0";
         canvas.style.background = "transparent";
-        canvas.style.position = "relative";
+        canvas.style.position = "";
         canvas.style.zIndex = "1";
 
         canvas.parentNode?.insertBefore(pixiCanvas, canvas);
 
         layers = buildLayerContainers(PIXI, app.stage);
         drawPlaceholderBackground(PIXI, layers, width, height);
+        syncRendererResolution();
 
         initialized = true;
       } catch (error) {
@@ -1018,6 +1052,14 @@ export function createPixiRenderer(options = {}) {
       );
       app.render();
     },
+    resize(viewportState) {
+      if (!initialized) {
+        return;
+      }
+
+      applyViewportStylesToPixiCanvas();
+      syncRendererResolution(viewportState);
+    },
     destroy() {
       if (pixiCanvas && pixiCanvas.parentNode) {
         pixiCanvas.parentNode.removeChild(pixiCanvas);
@@ -1031,6 +1073,7 @@ export function createPixiRenderer(options = {}) {
       layers = null;
       frameTextureCache.clear();
       initialized = false;
+      lastAppliedPixelRatio = null;
       restoreCanvasInputLayer();
     },
     getLayers() {

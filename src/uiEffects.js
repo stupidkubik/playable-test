@@ -4,7 +4,8 @@ export function createUiEffects({
   gameHeight,
   elements,
   setFooterVisible,
-  getCollectibleImage
+  getCollectibleImage,
+  projectWorldToScreen
 }) {
   const {
     endOverlay,
@@ -194,6 +195,13 @@ export function createUiEffects({
   }
 
   function gamePointToViewport(x, y) {
+    if (typeof projectWorldToScreen === "function") {
+      const projected = projectWorldToScreen(x, y);
+      if (projected && Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
+        return projected;
+      }
+    }
+
     const rect = canvas.getBoundingClientRect();
     return {
       x: rect.left + (x / gameWidth) * rect.width,

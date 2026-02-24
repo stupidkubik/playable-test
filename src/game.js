@@ -20,7 +20,9 @@ import {
 import { ASSETS } from "./assets/extractedAssets.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
 import { createUiEffects } from "./uiEffects.js";
+import { createViewportManager } from "./viewport.js";
 
+const appShell = document.querySelector(".app-shell");
 const canvas = document.querySelector("#game");
 
 const startOverlay = document.querySelector("#start-overlay");
@@ -53,6 +55,11 @@ canvas.width = GAME_WIDTH;
 canvas.height = GAME_HEIGHT;
 
 const GROUND_Y = GAME_HEIGHT - PLAYER_CONFIG.groundOffset;
+const viewportManager = createViewportManager({
+  root: appShell || canvas?.parentElement || document.body,
+  worldWidth: GAME_WIDTH,
+  worldHeight: GAME_HEIGHT
+});
 
 function firstFrameOrFallback(frames, fallback) {
   if (!frames || frames.length === 0) {
@@ -156,6 +163,13 @@ const state = {
 };
 let activeRenderer = null;
 
+viewportManager.subscribe(
+  (viewportState) => {
+    activeRenderer?.resize?.(viewportState);
+  },
+  { immediate: false }
+);
+
 function allocateId() {
   const id = state.nextId;
   state.nextId += 1;
@@ -193,6 +207,9 @@ const uiEffects = createUiEffects({
   gameWidth: GAME_WIDTH,
   gameHeight: GAME_HEIGHT,
   setFooterVisible,
+  projectWorldToScreen(x, y) {
+    return viewportManager.projectWorldToScreen(x, y);
+  },
   getCollectibleImage(type) {
     if (type === "paypalCard") {
       return state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
@@ -1106,9 +1123,11 @@ window.addEventListener("keydown", handlePrimaryInput, { passive: false });
 async function boot() {
   startBtn.disabled = true;
   startCopy.textContent = "Loading extracted assets...";
+  viewportManager.start();
 
   try {
     await ensureRenderer().init?.();
+    ensureRenderer().resize?.(viewportManager.getState());
     await loadResources();
     resetWorld();
   } catch {
@@ -1124,6 +1143,7 @@ boot();
 
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(state.rafId);
+  viewportManager.stop();
   activeRenderer?.destroy?.();
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);

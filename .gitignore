@@ -3,3 +3,5 @@ dist/playable.html
 node_modules/
 .tmp_extracted_images/
 docs/playable/
+.tmp_fullscreen_adaptive_refactor_plan.md
+.tmp_adaptive_v2_mini_spec.md
