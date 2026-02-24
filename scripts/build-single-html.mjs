@@ -38,7 +38,11 @@ const game = sources.pop();
 const rendererSources = sources;
 
 const stripLocalImports = (source) =>
-  source.replace(/^import\s+.+?from\s+"(?:\.\.\/|\.\/)[^"]+";\s*$/gm, "");
+  source
+    // Remove relative imports, including multiline named imports.
+    .replace(/^\s*import[\s\S]*?\sfrom\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
+    // Remove side-effect relative imports (rare, but safe to support).
+    .replace(/^\s*import\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
 const cleanedUiEffects = stripLocalImports(uiEffects);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
 const cleanedGame = stripLocalImports(game);
@@ -51,10 +55,9 @@ const inlinedBundle = escapeInlineScript(bundle);
 
 let html = indexHtml;
 html = html.replace('<link rel="stylesheet" href="./src/style.css" />', `<style>\n${css}\n</style>`);
-html = html.replace(
-  '<script type="module" src="./src/game.js"></script>',
-  `<script>\n${inlinedPixi}\n</script>\n<script type="module">\n${inlinedBundle}\n</script>`
-);
+html = html.replace('<script type="module" src="./src/game.js"></script>', () => {
+  return `<script>\n${inlinedPixi}\n</script>\n<script type="module">\n${inlinedBundle}\n</script>`;
+});
 
 await fs.mkdir(distDir, { recursive: true });
 await fs.writeFile(outputPath, html, "utf8");
