@@ -213,7 +213,7 @@ canvas {
 }
 
 .intro-hand {
-  width: min(86px, 18vw);
+  width: min(129px, 27vw);
   height: auto;
   transform-origin: 50% 70%;
   animation: intro-hand-scale 1.1s ease-in-out infinite;
@@ -548,7 +548,7 @@ canvas {
   }
 
   .intro-hand {
-    width: min(64px, 12vw);
+    width: min(96px, 18vw);
   }
 
   .game-footer {
@@ -819,7 +819,7 @@ body {
 }
 
 .app-shell.app-shell--fullscreen .intro-hand {
-  width: clamp(34px, calc(86px * var(--runtime-ui-scale)), 86px);
+  width: clamp(51px, calc(129px * var(--runtime-ui-scale)), 129px);
 }
 
 .app-shell.app-shell--fullscreen .game-footer {

@@ -4,9 +4,11 @@ import {
   PLAYER_CONFIG,
   SPEED_CONFIG,
   ECONOMY_CONFIG,
+  FINISH_CONFIG,
   SPAWN_SEQUENCE,
   STATES,
   computeJumpY,
+  computeFinishGateGeometry,
   playerHitbox,
   enemyHitbox,
   obstacleHitbox,
@@ -109,6 +111,19 @@ const CONFETTI_CONFIG = {
   ROTATION_SPEED_MIN: 0.02,
   ROTATION_SPEED_MAX: 0.1
 };
+const COMBO_POPUP_CONFIG = {
+  durationMs: 850,
+  risePx: 120,
+  fadeInMs: 90,
+  fadeOutMs: 220,
+  baseScale: 1,
+  popScale: 1.2
+};
+const COMBO_PRAISE_RULES = [
+  { streak: 6, text: "Perfect!", color: 0xffd54a, outline: 0x442000, fontSize: 58 },
+  { streak: 10, text: "Awesome!", color: 0x79f1ff, outline: 0x103a52, fontSize: 60 },
+  { streak: 14, text: "Fantastic!", color: 0xff8bf3, outline: 0x4b1548, fontSize: 62 }
+];
 
 const state = {
   mode: STATES.loading,
@@ -143,6 +158,8 @@ const state = {
   obstacles: [],
   collectibles: [],
   warningLabels: [],
+  comboPopups: [],
+  collectComboStreak: 0,
   finishLine: null,
   resources: {
     images: {},
@@ -206,6 +223,14 @@ function currentGroundY() {
 function currentPlayerBaseX() {
   const layoutState = currentLayoutState();
   return layoutState?.gameplayTokens?.playerBaseX ?? Math.round(GAME_WIDTH * PLAYER_CONFIG.xPosition);
+}
+
+function currentFinishGateGeometry(finishLine = state.finishLine) {
+  if (!finishLine) {
+    return null;
+  }
+
+  return computeFinishGateGeometry(finishLine, currentGroundY(), state.resources.images);
 }
 
 function resetPlayerPosition() {
@@ -449,6 +474,107 @@ function stopMusic() {
   music.currentTime = 0;
 }
 
+function comboPraiseForStreak(streak) {
+  if (streak < 6) {
+    return null;
+  }
+  if (streak === 6) {
+    return COMBO_PRAISE_RULES[0];
+  }
+  if (streak === 10) {
+    return COMBO_PRAISE_RULES[1];
+  }
+  if (streak === 14) {
+    return COMBO_PRAISE_RULES[2];
+  }
+  return null;
+}
+
+function resetCollectCombo({ clearPopups = false } = {}) {
+  state.collectComboStreak = 0;
+  if (clearPopups) {
+    state.comboPopups = [];
+  }
+}
+
+function comboPopupCenterPoint() {
+  const logicMetrics = currentLogicMetrics();
+  const layoutState = currentLayoutState();
+  return {
+    x: logicMetrics.worldWidth * 0.5,
+    y: Number.isFinite(layoutState?.gameplayTokens?.tutorialTextY)
+      ? layoutState.gameplayTokens.tutorialTextY
+      : logicMetrics.worldHeight * 0.58
+  };
+}
+
+function spawnComboPopup(_origin, praise) {
+  const center = comboPopupCenterPoint();
+  state.comboPopups.push({
+    id: allocateId(),
+    text: praise.text,
+    color: praise.color,
+    outline: praise.outline,
+    fontSize: praise.fontSize,
+    baseX: center.x,
+    baseY: center.y,
+    x: center.x,
+    y: center.y,
+    lifeMs: 0,
+    durationMs: COMBO_POPUP_CONFIG.durationMs,
+    alpha: 0,
+    scale: COMBO_POPUP_CONFIG.baseScale,
+    rotation: 0,
+    driftX: 0,
+    wobbleSeed: Math.random() * Math.PI * 2
+  });
+}
+
+function registerCollectCombo(origin) {
+  state.collectComboStreak += 1;
+  const praise = comboPraiseForStreak(state.collectComboStreak);
+  if (!praise) {
+    return;
+  }
+  spawnComboPopup(origin, praise);
+}
+
+function updateComboPopups(deltaMs) {
+  if (state.comboPopups.length === 0) {
+    return;
+  }
+
+  for (let i = state.comboPopups.length - 1; i >= 0; i -= 1) {
+    const popup = state.comboPopups[i];
+    popup.lifeMs += deltaMs;
+    const t = Math.max(0, Math.min(1, popup.lifeMs / popup.durationMs));
+    if (t >= 1) {
+      state.comboPopups.splice(i, 1);
+      continue;
+    }
+
+    const easeOut = 1 - Math.pow(1 - t, 3);
+    const rise = COMBO_POPUP_CONFIG.risePx * easeOut;
+    popup.x = popup.baseX;
+    popup.y = popup.baseY - rise;
+
+    if (popup.lifeMs < COMBO_POPUP_CONFIG.fadeInMs) {
+      popup.alpha = popup.lifeMs / COMBO_POPUP_CONFIG.fadeInMs;
+    } else if (popup.lifeMs > popup.durationMs - COMBO_POPUP_CONFIG.fadeOutMs) {
+      popup.alpha =
+        (popup.durationMs - popup.lifeMs) / COMBO_POPUP_CONFIG.fadeOutMs;
+    } else {
+      popup.alpha = 1;
+    }
+
+    const popT = Math.min(1, popup.lifeMs / 180);
+    popup.scale =
+      COMBO_POPUP_CONFIG.baseScale +
+      (COMBO_POPUP_CONFIG.popScale - COMBO_POPUP_CONFIG.baseScale) * Math.sin(popT * Math.PI) * (1 - t * 0.35);
+    popup.rotation = Math.sin(popup.wobbleSeed + t * Math.PI * 3) * 0.03 * (1 - t);
+  }
+}
+
 function resetWorld() {
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);
@@ -473,6 +599,8 @@ function resetWorld() {
   state.groundOffset = 0;
   state.frozenEnemyAnimationTick = null;
   state.confettiParticles = [];
+  state.comboPopups = [];
+  state.collectComboStreak = 0;
 
   resetPlayerPosition();
 
@@ -660,18 +788,24 @@ function spawnCollectible(yOffset = 0) {
 
 function spawnFinishLine() {
   const runtimeWorldWidth = currentRuntimeWorldWidth();
+  const groundY = currentGroundY();
+  const finishSpawnMargin = Math.round(Math.max(100, Math.min(220, runtimeWorldWidth * 0.18)));
+  const previewGeometry = computeFinishGateGeometry({ x: 0, tapeBroken: false }, groundY, state.resources.images);
+  const localMinX = previewGeometry?.bounds?.minX;
+  const spawnAnchorX = Number.isFinite(localMinX)
+    ? runtimeWorldWidth + finishSpawnMargin - localMinX
+    : runtimeWorldWidth + runtimeWorldWidth * 0.5;
+
   state.finishLine = {
     id: allocateId(),
-    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
-    y: currentGroundY() - 182,
-    width: 240,
-    height: 210,
+    // `x` is the finish gate composition anchor (not the left edge).
+    x: spawnAnchorX,
+    y: groundY - 182,
     speed: SPEED_CONFIG.base,
     tapeBroken: false,
-    tapeBreakX: 0
+    tapeBreakElapsedMs: 0,
+    tapeBreakProgress: 0
   };
-
-  state.finishLine.tapeBreakX = state.finishLine.x - 500;
   state.finishLineSpawned = true;
 }
 
@@ -776,7 +910,13 @@ function updateEntities(deltaSeconds) {
   if (state.finishLine) {
     state.finishLine.speed = state.currentSpeed;
     state.finishLine.x -= state.finishLine.speed * deltaSeconds;
-    state.finishLine.tapeBreakX = state.finishLine.x - 300;
+    if (state.finishLine.tapeBroken && (state.finishLine.tapeBreakProgress ?? 0) < 1) {
+      state.finishLine.tapeBreakElapsedMs = (state.finishLine.tapeBreakElapsedMs ?? 0) + deltaSeconds * 1000;
+      state.finishLine.tapeBreakProgress = Math.min(
+        1,
+        state.finishLine.tapeBreakElapsedMs / FINISH_CONFIG.tapeBreakAnimationMs
+      );
+    }
   }
 }
 
@@ -801,6 +941,7 @@ function hitPlayer() {
     return;
   }
 
+  resetCollectCombo({ clearPopups: true });
   state.hp -= 1;
   if (state.hp <= 0) {
     handleLose();
@@ -825,6 +966,7 @@ function collectItem(item) {
   item.collected = true;
   state.score += getCollectibleValue(item.collectibleType);
   uiEffects.animateFlyingCollectible(from, item.collectibleType);
+  registerCollectCombo(from);
   playSound("collect");
 }
 
@@ -875,6 +1017,8 @@ function startDeceleration() {
 
   if (state.finishLine) {
     state.finishLine.tapeBroken = true;
+    state.finishLine.tapeBreakElapsedMs = 0;
+    state.finishLine.tapeBreakProgress = 0;
   }
 }
 
@@ -989,8 +1133,15 @@ function cleanupEntities() {
   );
   state.warningLabels = state.warningLabels.filter((warning) => warning.x > -(cleanupMarginX * 2.2));
 
-  if (state.finishLine && state.finishLine.x + state.finishLine.width < -(cleanupMarginX * 1.5)) {
-    state.finishLine = null;
+  if (state.finishLine) {
+    const finishGeometry = currentFinishGateGeometry(state.finishLine);
+    const finishMaxX = finishGeometry?.bounds?.maxX;
+    if (
+      (Number.isFinite(finishMaxX) && finishMaxX < -(cleanupMarginX * 1.5)) ||
+      (!Number.isFinite(finishMaxX) && state.finishLine.x < -(cleanupMarginX * 2))
+    ) {
+      state.finishLine = null;
+    }
   }
 }
 
@@ -1041,8 +1192,17 @@ function updateRunning(deltaSeconds, deltaMs) {
   updateEntities(deltaSeconds);
   checkTutorialTrigger();
 
-  if (state.finishLine && !state.isDecelerating && state.player.x >= state.finishLine.tapeBreakX) {
-    startDeceleration();
+  if (state.finishLine && !state.isDecelerating && !state.finishLine.tapeBroken) {
+    const finishGeometry = currentFinishGateGeometry(state.finishLine);
+    const breakLineX = finishGeometry?.tape?.breakLineX;
+
+    if (Number.isFinite(breakLineX)) {
+      const playerBox = playerHitbox(state.player, logicMetrics);
+      const playerFrontX = playerBox.x + playerBox.width;
+      if (playerFrontX >= breakLineX) {
+        startDeceleration();
+      }
+    }
   }
 
   checkCollisions();
@@ -1079,6 +1239,7 @@ function render(elapsedSeconds) {
 
 function update(deltaSeconds, deltaMs) {
   updateConfetti(deltaMs);
+  updateComboPopups(deltaMs);
 
   if (state.mode === STATES.running && state.isRunning) {
     updateRunning(deltaSeconds, deltaMs);

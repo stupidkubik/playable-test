@@ -1,4 +1,4 @@
-import { STATES } from "../gameLogic.js";
+import { STATES, computeFinishGateGeometry } from "../gameLogic.js";
 import { ASSETS } from "../assets/playableAssets.js";
 
 let pixiGlobalPromise = null;
@@ -116,6 +116,7 @@ function buildLayerContainers(PIXI, stage) {
     "warnings",
     "player",
     "fx",
+    "comboPopups",
     "tutorialHint"
   ];
   const layers = Object.create(null);
@@ -451,7 +452,9 @@ function syncEnemyLayer(PIXI, textureCache, frameTextureCache, layers, sceneStat
   const baseTexture = textureForImage(PIXI, textureCache, spriteSheetImage);
   const sequence = ASSETS.frames.enemyRun || [];
   const frozenTick = sceneState.frozenEnemyAnimationTick;
-  const useFrozenTick = sceneState.mode === STATES.paused && Number.isFinite(frozenTick);
+  const freezeEnemyAnimation = sceneState.mode === STATES.paused || sceneState.mode === STATES.endLose;
+  const fallbackFrozenTick = Number.isFinite(frozenTick) ? frozenTick : 0;
+  const useFrozenTick = freezeEnemyAnimation;
 
   for (const enemy of enemies) {
     if (!baseTexture || sequence.length === 0) {
@@ -461,7 +464,7 @@ function syncEnemyLayer(PIXI, textureCache, frameTextureCache, layers, sceneStat
       continue;
     }
 
-    const frameTick = useFrozenTick ? frozenTick : Math.floor(elapsedSeconds * 10);
+    const frameTick = useFrozenTick ? fallbackFrozenTick : Math.floor(elapsedSeconds * 10);
     const frame = sequence[(frameTick + enemy.animationOffset) % sequence.length];
     const box = frameSourceBox(frame);
     const drawScale = (enemy.scale || 0.44) * 1.12;
@@ -497,10 +500,11 @@ function syncObstaclesLayer(PIXI, textureCache, layers, sceneState, elapsedSecon
 
   const obstacleSpriteTexture = textureForImage(PIXI, textureCache, sceneState.resources?.images?.obstacleSprite);
   const obstacleGlowTexture = textureForImage(PIXI, textureCache, sceneState.resources?.images?.obstacleGlow);
+  const obstacleAnimSeconds = sceneState?.mode === STATES.endLose ? 0 : elapsedSeconds;
 
   for (const obstacle of obstacles) {
     if (obstacleGlowTexture) {
-      const pulse = 1 + Math.sin(elapsedSeconds * 3 + obstacle.pulseSeed) * 0.1;
+      const pulse = 1 + Math.sin(obstacleAnimSeconds * 3 + obstacle.pulseSeed) * 0.1;
       const glowWidth = obstacle.width * pulse;
       const glowHeight = obstacle.height * pulse;
       const glowX = obstacle.x - (glowWidth - obstacle.width) * 0.5;
@@ -522,7 +526,7 @@ function syncObstaclesLayer(PIXI, textureCache, layers, sceneState, elapsedSecon
       continue;
     }
 
-    const pulse = 1 + Math.sin(elapsedSeconds * 4 + obstacle.pulseSeed) * 0.05;
+    const pulse = 1 + Math.sin(obstacleAnimSeconds * 4 + obstacle.pulseSeed) * 0.05;
     const width = obstacle.width * pulse;
     const height = obstacle.height * pulse;
     const x = obstacle.x - (width - obstacle.width) * 0.5;
@@ -619,6 +623,62 @@ function syncFxLayer(PIXI, textureCache, layers, sceneState) {
   }
 }
 
+function syncComboPopupsLayer(PIXI, layers, sceneState) {
+  clearContainer(layers.comboPopups);
+
+  const popups = sceneState?.comboPopups || [];
+  if (popups.length === 0) {
+    return;
+  }
+
+  for (const popup of popups) {
+    if (!popup?.text || popup.alpha <= 0) {
+      continue;
+    }
+
+    const group = new PIXI.Container();
+    group.x = popup.x;
+    group.y = popup.y;
+    group.alpha = popup.alpha;
+    group.scale.set(popup.scale || 1);
+    group.rotation = popup.rotation || 0;
+    layers.comboPopups.addChild(group);
+
+    addTextLabel(
+      PIXI,
+      group,
+      popup.text,
+      0,
+      0,
+      {
+        fontFamily: "GameFont",
+        fontSize: popup.fontSize || 56,
+        fontWeight: "800",
+        fill: 0x000000,
+        align: "center"
+      },
+      0.5,
+      0.5
+    );
+    addTextLabel(
+      PIXI,
+      group,
+      popup.text,
+      0,
+      -2,
+      {
+        fontFamily: "GameFont",
+        fontSize: popup.fontSize || 56,
+        fontWeight: "800",
+        fill: popup.color ?? 0xffffff,
+        align: "center"
+      },
+      0.5,
+      0.5
+    );
+  }
+}
+
 function addScaledSprite(container, PIXI, texture, x, y, width, height) {
   if (!texture) {
     return null;
@@ -645,7 +705,225 @@ function addRotatedScaledSprite(container, PIXI, texture, x, y, width, height, r
   return sprite;
 }
 
-function syncFinishLayer(PIXI, textureCache, layers, sceneState, groundY) {
+function addRotatedScaledSkewedSprite(
+  container,
+  PIXI,
+  texture,
+  x,
+  y,
+  width,
+  height,
+  rotation,
+  anchorX = 0.5,
+  anchorY = 0.5,
+  skewX = 0,
+  skewY = 0
+) {
+  const sprite = addRotatedScaledSprite(
+    container,
+    PIXI,
+    texture,
+    x,
+    y,
+    width,
+    height,
+    rotation,
+    anchorX,
+    anchorY
+  );
+  if (sprite?.skew?.set) {
+    sprite.skew.set(skewX, skewY);
+  }
+  return sprite;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeInOutSine01(value) {
+  const t = clamp01(value);
+  return -(Math.cos(Math.PI * t) - 1) / 2;
+}
+
+function interpolateKeyframes01(keyframes, value) {
+  if (!Array.isArray(keyframes) || keyframes.length === 0) {
+    return 0;
+  }
+
+  const t = clamp01(value);
+  if (t <= keyframes[0].t) {
+    return keyframes[0].value;
+  }
+
+  for (let index = 1; index < keyframes.length; index += 1) {
+    const prev = keyframes[index - 1];
+    const next = keyframes[index];
+    if (t <= next.t) {
+      const span = Math.max(1e-6, next.t - prev.t);
+      const local = (t - prev.t) / span;
+      return prev.value + (next.value - prev.value) * easeInOutSine01(local);
+    }
+  }
+
+  return keyframes[keyframes.length - 1].value;
+}
+
+function easeOutCubic01(value) {
+  const t = clamp01(value);
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function textureFrameBounds(texture) {
+  const frame = texture?.frame;
+  if (frame && Number.isFinite(frame.x) && Number.isFinite(frame.y) && Number.isFinite(frame.width) && Number.isFinite(frame.height)) {
+    return {
+      x: frame.x,
+      y: frame.y,
+      width: frame.width,
+      height: frame.height
+    };
+  }
+
+  return {
+    x: 0,
+    y: 0,
+    width: texture?.width ?? 0,
+    height: texture?.height ?? 0
+  };
+}
+
+function horizontalSliceTexture(PIXI, sliceTextureCache, texture, fromRatio, toRatio) {
+  if (!texture || !sliceTextureCache) {
+    return texture;
+  }
+
+  const bounds = textureFrameBounds(texture);
+  if (bounds.width <= 1 || bounds.height <= 0) {
+    return texture;
+  }
+
+  const startRatio = clamp01(fromRatio);
+  const endRatio = clamp01(toRatio);
+  if (endRatio <= startRatio) {
+    return texture;
+  }
+
+  const x0 = bounds.x + Math.round(bounds.width * startRatio);
+  const x1 = bounds.x + Math.round(bounds.width * endRatio);
+  const width = Math.max(1, x1 - x0);
+  const key = `ribbon:${texture.source?.uid ?? "src"}:${x0}:${bounds.y}:${width}:${bounds.height}`;
+  let sliced = sliceTextureCache.get(key);
+  if (!sliced) {
+    sliced = new PIXI.Texture({
+      source: texture.source,
+      frame: new PIXI.Rectangle(x0, bounds.y, width, bounds.height)
+    });
+    sliceTextureCache.set(key, sliced);
+  }
+
+  return sliced;
+}
+
+function spriteLocalPointToWorld(sprite, localX, localY) {
+  const width = sprite?.width ?? 0;
+  const height = sprite?.height ?? 0;
+  const anchorX = (sprite?.anchorX ?? 0) * width;
+  const anchorY = (sprite?.anchorY ?? 0) * height;
+  const dx = localX - anchorX;
+  const dy = localY - anchorY;
+  const rotation = sprite?.rotation ?? 0;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+
+  return {
+    x: (sprite?.x ?? 0) + dx * cos - dy * sin,
+    y: (sprite?.y ?? 0) + dx * sin + dy * cos
+  };
+}
+
+function addRibbonWaveSegments(container, PIXI, sliceTextureCache, texture, sprite, progress, options = {}) {
+  if (!texture || !sprite || !PIXI) {
+    return;
+  }
+
+  const segmentCount = Math.max(3, options.segmentCount ?? 5);
+  const phaseStep = options.phaseStep ?? 0.95;
+  const waveCycles = options.waveCycles ?? 2.8;
+  const normalWavePx = options.normalWavePx ?? Math.max(8, sprite.height * 0.75);
+  const bendAmplitude = options.bendAmplitude ?? 0.22;
+  const tailDropPx = options.tailDropPx ?? Math.max(26, sprite.height * 1.7);
+  const overallDropPx = options.overallDropPx ?? Math.max(10, sprite.height * 0.65);
+  const dropWavePx = options.dropWavePx ?? Math.max(8, sprite.height * 0.5);
+  const horizontalTailDriftPx = options.horizontalTailDriftPx ?? 0;
+  const driftSign = options.driftSign ?? 1;
+  const bendSign = options.bendSign ?? 1;
+  const wavePhaseOffset = options.wavePhaseOffset ?? 0;
+  const progressT = clamp01(progress);
+  const eased = easeOutCubic01(progressT);
+  const damping = Math.pow(1 - progressT, 1.15);
+  const transientEnvelope = Math.sin(progressT * Math.PI) * (0.45 + eased * 0.55);
+  const baseRotation = sprite.rotation ?? 0;
+  const baseDirX = Math.cos(baseRotation);
+  const baseDirY = Math.sin(baseRotation);
+  const baseNormalX = -baseDirY;
+  const baseNormalY = baseDirX;
+  const segmentLength = sprite.width / segmentCount;
+  const segmentHeight = sprite.height;
+  const centerlineRoot = spriteLocalPointToWorld(sprite, 0, segmentHeight * 0.5);
+  const baseDropY = overallDropPx * transientEnvelope;
+
+  for (let i = 0; i < segmentCount; i += 1) {
+    const startRatio = i / segmentCount;
+    const endRatio = (i + 1) / segmentCount;
+    const centerRatio = (i + 0.5) / segmentCount;
+    const tailWeight = Math.pow(centerRatio, 1.2);
+    const centerDistance = (i + 0.5) * segmentLength;
+    const baseCenterX = centerlineRoot.x + baseDirX * centerDistance;
+    const baseCenterY = centerlineRoot.y + baseDirY * centerDistance;
+    const phase = progressT * Math.PI * 2 * waveCycles + i * phaseStep + wavePhaseOffset;
+    const secondaryPhase = progressT * Math.PI * (1.4 + centerRatio) + i * 0.55 + wavePhaseOffset * 0.35;
+    const normalWave =
+      Math.sin(phase) *
+      normalWavePx *
+      damping *
+      (0.35 + tailWeight * 0.95);
+    const extraDrop =
+      Math.max(0, Math.sin(phase - Math.PI * 0.2)) *
+      dropWavePx *
+      damping *
+      (0.2 + tailWeight * 1.1);
+    const tailDrop = tailDropPx * transientEnvelope * tailWeight;
+    const tailDriftX = horizontalTailDriftPx * transientEnvelope * tailWeight * driftSign;
+    const bend =
+      Math.sin(secondaryPhase) *
+      bendAmplitude *
+      damping *
+      (0.45 + tailWeight * 0.9) *
+      bendSign;
+    const sagTilt = (options.sagTiltAmplitude ?? 0.3) * transientEnvelope * tailWeight * bendSign;
+    const rotation = baseRotation + bend + sagTilt;
+    const centerX = baseCenterX + baseNormalX * normalWave + tailDriftX;
+    const centerY = baseCenterY + baseNormalY * normalWave + baseDropY + tailDrop + extraDrop;
+    const drawW = segmentLength * (options.widthOverlapScale ?? 1.06);
+    const segmentTexture = horizontalSliceTexture(PIXI, sliceTextureCache, texture, startRatio, endRatio);
+
+    addRotatedScaledSprite(
+      container,
+      PIXI,
+      segmentTexture,
+      centerX,
+      centerY,
+      drawW,
+      segmentHeight,
+      rotation,
+      0.5,
+      0.5
+    );
+  }
+}
+
+function syncFinishLayer(PIXI, textureCache, frameTextureCache, layers, sceneState, groundY) {
   clearContainer(layers.finish);
 
   const finish = sceneState?.finishLine;
@@ -659,85 +937,121 @@ function syncFinishLayer(PIXI, textureCache, layers, sceneState, groundY) {
   const rightPole = textureForImage(PIXI, textureCache, images.finishPoleRight);
   const leftTape = textureForImage(PIXI, textureCache, images.finishTapeLeft);
   const rightTape = textureForImage(PIXI, textureCache, images.finishTapeRight);
+  const finishGeometry = computeFinishGateGeometry(finish, groundY, images);
 
   const canUseSpriteFinish = floorPattern && leftPole && rightPole && leftTape && rightTape;
 
-  if (canUseSpriteFinish) {
-    const finishPoleLeftScale = 1.8;
-    const finishPoleRightScale = 1.35;
-    const finishTapeScaleX = 1.8;
-    const finishTapeScaleY = 1;
-
-    const floorWidth = images.finishFloorPattern.width * 2;
-    const floorHeight = images.finishFloorPattern.height * 2;
-    const leftPoleWidth = images.finishPoleLeft.width * finishPoleLeftScale;
-    const leftPoleHeight = images.finishPoleLeft.height * finishPoleLeftScale;
-    const rightPoleWidth = images.finishPoleRight.width * finishPoleRightScale;
-    const rightPoleHeight = images.finishPoleRight.height * finishPoleRightScale;
-    const leftBottomX = finish.x - 360;
-    const rightBottomX = finish.x - 240;
-    const polesBottomY = groundY - 100;
-    const leftTopY = polesBottomY - leftPoleHeight;
-    const rightTopY = polesBottomY - rightPoleHeight;
-    const leftTapeWidth = images.finishTapeLeft.width * finishTapeScaleX;
-    const leftTapeHeight = images.finishTapeLeft.height * finishTapeScaleY;
-    const rightTapeWidth = images.finishTapeRight.width * finishTapeScaleX;
-    const rightTapeHeight = images.finishTapeRight.height * finishTapeScaleY;
-    const leftTapeAnchorX = leftBottomX;
-    const leftTapeAnchorY = leftTopY + 40;
-    const rightTapeAnchorX = rightBottomX - 24;
-    const rightTapeAnchorY = rightTopY + 58;
-    const leftTapeRotation = finish.tapeBroken ? 1.05 : 0.4;
-    const rightTapeRotation = finish.tapeBroken ? -3.25 : -2.5;
-
-    addScaledSprite(layers.finish, PIXI, floorPattern, finish.x - floorWidth * 0.5, groundY - 84, floorWidth, floorHeight);
+  if (canUseSpriteFinish && finishGeometry) {
+    const floorSprite = finishGeometry.sprites.floor;
+    const leftPoleSprite = finishGeometry.sprites.leftPole;
+    const rightPoleSprite = finishGeometry.sprites.rightPole;
+    const leftTapeSprite = finishGeometry.sprites.leftTape;
+    const rightTapeSprite = finishGeometry.sprites.rightTape;
+    const tapeBreakProgress = Number.isFinite(finish?.tapeBreakProgress)
+      ? clamp01(finish.tapeBreakProgress)
+      : finish?.tapeBroken
+        ? 1
+        : 0;
+    const leftTapeSkewY = interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.14, value: 0 },
+        { t: 0.3, value: -0.22 },
+        { t: 0.52, value: 0.14 },
+        { t: 0.74, value: -0.08 },
+        { t: 1, value: 0 }
+      ],
+      tapeBreakProgress
+    );
+    const rightTapeSkewY = interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.14, value: 0 },
+        { t: 0.3, value: 0.22 },
+        { t: 0.54, value: -0.14 },
+        { t: 0.76, value: 0.08 },
+        { t: 1, value: 0 }
+      ],
+      tapeBreakProgress
+    );
+    const leftTapeSkewX = interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.34, value: 0.05 },
+        { t: 0.58, value: -0.035 },
+        { t: 1, value: 0 }
+      ],
+      tapeBreakProgress
+    );
+    const rightTapeSkewX = interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.34, value: -0.05 },
+        { t: 0.58, value: 0.035 },
+        { t: 1, value: 0 }
+      ],
+      tapeBreakProgress
+    );
+    addScaledSprite(
+      layers.finish,
+      PIXI,
+      floorPattern,
+      floorSprite.x,
+      floorSprite.y,
+      floorSprite.width,
+      floorSprite.height
+    );
     addRotatedScaledSprite(
       layers.finish,
       PIXI,
       leftPole,
-      leftBottomX,
-      polesBottomY,
-      leftPoleWidth,
-      leftPoleHeight,
-      -Math.PI / 2,
-      0.5,
-      1
+      leftPoleSprite.x,
+      leftPoleSprite.y,
+      leftPoleSprite.width,
+      leftPoleSprite.height,
+      leftPoleSprite.rotation,
+      leftPoleSprite.anchorX,
+      leftPoleSprite.anchorY
     );
     addRotatedScaledSprite(
       layers.finish,
       PIXI,
       rightPole,
-      rightBottomX,
-      polesBottomY,
-      rightPoleWidth,
-      rightPoleHeight,
-      -Math.PI / 2,
-      0.5,
-      1
+      rightPoleSprite.x,
+      rightPoleSprite.y,
+      rightPoleSprite.width,
+      rightPoleSprite.height,
+      rightPoleSprite.rotation,
+      rightPoleSprite.anchorX,
+      rightPoleSprite.anchorY
     );
-    addRotatedScaledSprite(
+    addRotatedScaledSkewedSprite(
       layers.finish,
       PIXI,
       leftTape,
-      leftTapeAnchorX,
-      leftTapeAnchorY,
-      leftTapeWidth,
-      leftTapeHeight,
-      leftTapeRotation,
-      0,
-      0
+      leftTapeSprite.x,
+      leftTapeSprite.y,
+      leftTapeSprite.width,
+      leftTapeSprite.height,
+      leftTapeSprite.rotation,
+      leftTapeSprite.anchorX,
+      leftTapeSprite.anchorY,
+      leftTapeSkewX,
+      leftTapeSkewY
     );
-    addRotatedScaledSprite(
+    addRotatedScaledSkewedSprite(
       layers.finish,
       PIXI,
       rightTape,
-      rightTapeAnchorX,
-      rightTapeAnchorY,
-      rightTapeWidth,
-      rightTapeHeight,
-      rightTapeRotation,
-      0,
-      0
+      rightTapeSprite.x,
+      rightTapeSprite.y,
+      rightTapeSprite.width,
+      rightTapeSprite.height,
+      rightTapeSprite.rotation,
+      rightTapeSprite.anchorX,
+      rightTapeSprite.anchorY,
+      rightTapeSkewX,
+      rightTapeSkewY
     );
     return;
   }
@@ -853,9 +1167,9 @@ function syncTutorialHintLayer(
     return;
   }
 
-  const handWidth = 100;
-  const handHeight = 100;
-  const handX = width * 0.5 - 50;
+  const handWidth = 150;
+  const handHeight = 150;
+  const handX = width * 0.5 - handWidth * 0.5;
   const handY = hintY + 34;
   const anchorX = handX + handWidth * 0.5;
   const anchorY = handY + handHeight * 0.7;
@@ -1123,7 +1437,7 @@ export function createPixiRenderer(options = {}) {
         sceneState,
         frame?.elapsedSeconds ?? 0
       );
-      syncFinishLayer(PIXIRef, textureCache, layers, sceneState, groundY);
+      syncFinishLayer(PIXIRef, textureCache, frameTextureCache, layers, sceneState, groundY);
       syncEnemyLayer(
         PIXIRef,
         textureCache,
@@ -1135,6 +1449,7 @@ export function createPixiRenderer(options = {}) {
       syncWarningsLayer(PIXIRef, layers, sceneState, frame?.elapsedSeconds ?? 0);
       syncPlayerLayer(PIXIRef, textureCache, frameTextureCache, layers, sceneState);
       syncFxLayer(PIXIRef, textureCache, layers, sceneState);
+      syncComboPopupsLayer(PIXIRef, layers, sceneState);
       syncTutorialHintLayer(
         PIXIRef,
         textureCache,
