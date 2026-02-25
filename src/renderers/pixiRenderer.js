@@ -922,15 +922,27 @@ export function createPixiRenderer(options = {}) {
     }
   }
 
-  function resolveFrameGroundY(frame) {
+  function resolveFrameWorldMetrics(frame) {
+    const layoutState = frame?.layoutState;
+    const cameraViewWorldRect = layoutState?.cameraViewWorldRect;
+    const gameplayTokens = layoutState?.gameplayTokens;
+    const worldWidth = Number.isFinite(cameraViewWorldRect?.width) ? cameraViewWorldRect.width : width;
+    const worldHeight = Number.isFinite(cameraViewWorldRect?.height) ? cameraViewWorldRect.height : height;
+    const worldX = Number.isFinite(cameraViewWorldRect?.x) ? cameraViewWorldRect.x : 0;
+    const worldY = Number.isFinite(cameraViewWorldRect?.y) ? cameraViewWorldRect.y : 0;
     const fallbackGroundY = options.groundY ?? height * 0.66;
-    const runtimeGroundY = frame?.layoutState?.gameplayTokens?.runtimeGroundY;
+    const runtimeGroundY = gameplayTokens?.runtimeGroundY;
+    const groundY = Number.isFinite(runtimeGroundY)
+      ? runtimeGroundY
+      : fallbackGroundY;
 
-    if (!Number.isFinite(runtimeGroundY)) {
-      return fallbackGroundY;
-    }
-
-    return Math.max(0, Math.min(height, runtimeGroundY));
+    return {
+      worldX,
+      worldY,
+      worldWidth,
+      worldHeight,
+      groundY: Math.max(worldY, Math.min(worldY + worldHeight, groundY))
+    };
   }
 
   function syncWorldRootTransform(frame) {
@@ -939,16 +951,49 @@ export function createPixiRenderer(options = {}) {
       return;
     }
 
-    // Phase 4 foundation: keep a single world root ready for camera transforms.
-    // Current behavior remains 1:1 until layout camera mapping is enabled.
-    worldRoot.x = 0;
-    worldRoot.y = 0;
-    worldRoot.scale.set(1, 1);
+    const layoutState = frame?.layoutState;
+    const cameraViewWorldRect = layoutState?.cameraViewWorldRect;
+    const cameraTransform = layoutState?.cameraTransform;
+    const worldViewportRect = layoutState?.worldViewportRect;
+
+    if (
+      !cameraViewWorldRect ||
+      !cameraTransform ||
+      !worldViewportRect ||
+      !Number.isFinite(cameraTransform.scale) ||
+      !Number.isFinite(worldViewportRect.width) ||
+      !Number.isFinite(worldViewportRect.height) ||
+      worldViewportRect.width <= 0 ||
+      worldViewportRect.height <= 0
+    ) {
+      worldRoot.x = 0;
+      worldRoot.y = 0;
+      worldRoot.scale.set(1, 1);
+      worldRoot.rotation = 0;
+      worldRoot.alpha = 1;
+      worldRoot.visible = true;
+      return;
+    }
+
+    const canvasScaleX = worldViewportRect.width / width;
+    const canvasScaleY = worldViewportRect.height / height;
+    const scaleX = cameraTransform.scale / canvasScaleX;
+    const scaleY = cameraTransform.scale / canvasScaleY;
+    const viewportRectX = Number.isFinite(worldViewportRect.x) ? worldViewportRect.x : 0;
+    const viewportRectY = Number.isFinite(worldViewportRect.y) ? worldViewportRect.y : 0;
+    const cameraWorldX = Number.isFinite(cameraViewWorldRect.x) ? cameraViewWorldRect.x : 0;
+    const cameraWorldY = Number.isFinite(cameraViewWorldRect.y) ? cameraViewWorldRect.y : 0;
+    const viewportLocalOffsetX = cameraTransform.offsetX - viewportRectX;
+    const viewportLocalOffsetY = cameraTransform.offsetY - viewportRectY;
+
+    worldRoot.x =
+      viewportLocalOffsetX / canvasScaleX - cameraWorldX * scaleX;
+    worldRoot.y =
+      viewportLocalOffsetY / canvasScaleY - cameraWorldY * scaleY;
+    worldRoot.scale.set(scaleX, scaleY);
     worldRoot.rotation = 0;
     worldRoot.alpha = 1;
     worldRoot.visible = true;
-
-    void frame;
   }
 
   return {
@@ -1029,25 +1074,26 @@ export function createPixiRenderer(options = {}) {
       }
 
       const sceneState = frame?.state || null;
-      const groundY = resolveFrameGroundY(frame);
+      const worldMetrics = resolveFrameWorldMetrics(frame);
+      const groundY = worldMetrics.groundY;
       syncWorldRootTransform(frame);
       syncSkyLayer(
         PIXIRef,
         textureCache,
         layers,
         sceneState,
-        width,
+        worldMetrics.worldWidth,
         groundY,
-        height
+        worldMetrics.worldHeight
       );
-      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, width, groundY);
+      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, worldMetrics.worldWidth, groundY);
       syncGroundLayer(
         PIXIRef,
         layers,
         sceneState,
-        width,
+        worldMetrics.worldWidth,
         groundY,
-        height
+        worldMetrics.worldHeight
       );
       syncCollectiblesLayer(
         PIXIRef,
@@ -1081,9 +1127,9 @@ export function createPixiRenderer(options = {}) {
         layers,
         sceneState,
         frame?.elapsedSeconds ?? 0,
-        width,
+        worldMetrics.worldWidth,
         groundY,
-        height
+        worldMetrics.worldHeight
       );
       app.render();
     },

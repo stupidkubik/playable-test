@@ -4,6 +4,43 @@ function roundPx(value) {
   return Math.round(value * 100) / 100;
 }
 
+function buildLayoutViewport(layoutState) {
+  const viewportRect = {
+    x: roundPx(layoutState?.worldViewportRect?.x ?? 0),
+    y: roundPx(layoutState?.worldViewportRect?.y ?? 0),
+    width: roundPx(layoutState?.worldViewportRect?.width ?? layoutState?.screenRect?.width ?? 0),
+    height: roundPx(layoutState?.worldViewportRect?.height ?? layoutState?.screenRect?.height ?? 0)
+  };
+
+  return {
+    scale: layoutState?.cameraTransform?.scale ?? 1,
+    uiScale: layoutState?.uiTokens?.uiScale ?? 1,
+    viewportRect,
+    viewportPageRect: {
+      left: roundPx((layoutState?.screenRect?.x ?? 0) + viewportRect.x),
+      top: roundPx((layoutState?.screenRect?.y ?? 0) + viewportRect.y),
+      width: viewportRect.width,
+      height: viewportRect.height
+    },
+    gaps: {
+      left: roundPx(viewportRect.x),
+      top: roundPx(viewportRect.y),
+      right: roundPx(
+        Math.max(
+          0,
+          (layoutState?.screenRect?.width ?? viewportRect.width) - viewportRect.x - viewportRect.width
+        )
+      ),
+      bottom: roundPx(
+        Math.max(
+          0,
+          (layoutState?.screenRect?.height ?? viewportRect.height) - viewportRect.y - viewportRect.height
+        )
+      )
+    }
+  };
+}
+
 function buildContainViewport(layoutState, worldWidth, worldHeight) {
   const shellRect = layoutState.screenRect;
   const scale = Math.min(shellRect.width / worldWidth, shellRect.height / worldHeight);
@@ -42,10 +79,6 @@ function applyLegacyViewportCssVars(root, nextState) {
   }
 
   const { viewportRect, gaps, scale, uiScale } = nextState;
-  const tutorialTextWorldY = nextState.layoutState?.gameplayTokens?.tutorialTextY ?? nextState.worldHeight * 0.57;
-  const tutorialHandWorldY = nextState.layoutState?.gameplayTokens?.tutorialHandY ?? nextState.worldHeight * 0.74;
-  const tutorialTextScreenY = roundPx(viewportRect.y + (tutorialTextWorldY / nextState.worldHeight) * viewportRect.height);
-  const tutorialHandScreenY = roundPx(viewportRect.y + (tutorialHandWorldY / nextState.worldHeight) * viewportRect.height);
   root.style.setProperty("--game-viewport-x", `${viewportRect.x}px`);
   root.style.setProperty("--game-viewport-y", `${viewportRect.y}px`);
   root.style.setProperty("--game-viewport-w", `${viewportRect.width}px`);
@@ -54,10 +87,6 @@ function applyLegacyViewportCssVars(root, nextState) {
   root.style.setProperty("--game-viewport-bottom-gap", `${gaps.bottom}px`);
   root.style.setProperty("--game-scale", `${scale}`);
   root.style.setProperty("--ui-scale", `${uiScale}`);
-  // Phase 2 compatibility: start overlay anchors should follow the currently rendered contain viewport
-  // until gameplay + renderer switch to layoutState camera mapping in later phases.
-  root.style.setProperty("--layout-tutorial-text-screen-y", `${tutorialTextScreenY}px`);
-  root.style.setProperty("--layout-tutorial-hand-screen-y", `${tutorialHandScreenY}px`);
 
   root.dataset.viewportOrientation = nextState.orientation;
   root.dataset.viewportAspectBucket = nextState.aspectBucket;
@@ -82,13 +111,13 @@ export function createViewportManager(options = {}) {
   const subscribers = new Set();
 
   function mapLayoutState(layoutState) {
-    const legacy = buildContainViewport(layoutState, worldWidth, worldHeight);
+    const runtimeViewport = buildLayoutViewport(layoutState);
     return {
       worldWidth,
       worldHeight,
       pixelRatio: layoutState.pixelRatio,
-      scale: legacy.scale,
-      uiScale: legacy.uiScale,
+      scale: runtimeViewport.scale,
+      uiScale: runtimeViewport.uiScale,
       orientation: layoutState.orientation,
       aspectBucket: layoutState.bucket,
       shellRect: {
@@ -97,9 +126,9 @@ export function createViewportManager(options = {}) {
         width: layoutState.screenRect.width,
         height: layoutState.screenRect.height
       },
-      viewportRect: legacy.viewportRect,
-      viewportPageRect: legacy.viewportPageRect,
-      gaps: legacy.gaps,
+      viewportRect: runtimeViewport.viewportRect,
+      viewportPageRect: runtimeViewport.viewportPageRect,
+      gaps: runtimeViewport.gaps,
       layoutState
     };
   }
@@ -128,22 +157,18 @@ export function createViewportManager(options = {}) {
     return state;
   }
 
-  // NOTE: Phase 1 keeps existing runtime behavior (contain viewport mapping) for compatibility.
-  // Future phases should switch current callers to layoutState.cameraTransform projections.
   function projectWorldToScreen(x, y) {
     const current = getState();
+    const projected = layoutEngine.projectWorldToScreen(x, y);
     return {
-      x: current.viewportPageRect.left + (x / worldWidth) * current.viewportRect.width,
-      y: current.viewportPageRect.top + (y / worldHeight) * current.viewportRect.height
+      x: current.shellRect.left + projected.x,
+      y: current.shellRect.top + projected.y
     };
   }
 
   function projectScreenToWorld(x, y) {
     const current = getState();
-    return {
-      x: ((x - current.viewportPageRect.left) / current.viewportRect.width) * worldWidth,
-      y: ((y - current.viewportPageRect.top) / current.viewportRect.height) * worldHeight
-    };
+    return layoutEngine.projectScreenToWorld(x - current.shellRect.left, y - current.shellRect.top);
   }
 
   function subscribe(handler, { immediate = true } = {}) {

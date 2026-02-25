@@ -183,16 +183,12 @@ function currentLayoutState() {
 function currentLogicMetrics() {
   const layoutState = currentLayoutState();
   const gameplayTokens = layoutState?.gameplayTokens;
-
-  // Phase 3 compatibility:
-  // keep gameplay simulation in design-world dimensions until Phase 4 renderer/camera
-  // is ready to consume expanded cameraViewWorldRect without clipping/desync.
   return {
-    worldWidth: GAME_WIDTH,
-    worldHeight: GAME_HEIGHT,
+    worldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
+    worldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
     cameraViewWorldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
     cameraViewWorldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
-    spawnLeadViewportWidth: GAME_WIDTH,
+    spawnLeadViewportWidth: gameplayTokens?.spawnLeadViewportWidth ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
