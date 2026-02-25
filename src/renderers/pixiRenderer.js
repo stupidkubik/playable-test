@@ -271,10 +271,13 @@ function syncSkyLayer(PIXI, textureCache, layers, sceneState, width, groundY, he
   // must cover the full render surface instead of relying on CSS background under the canvas.
   const scale = height / scene.height;
   const drawWidth = scene.width * scale;
-  const tileIndexStart = Math.floor(sceneState.skyOffset / drawWidth);
+  const baseTileIndexStart = Math.floor(sceneState.skyOffset / drawWidth);
   const wrappedOffset = ((sceneState.skyOffset % drawWidth) + drawWidth) % drawWidth;
-  const tileStartX = -wrappedOffset;
-  const tileCount = Math.ceil(width / drawWidth) + 2;
+  // Start one tile earlier so wide layouts with centered capped camera still have
+  // a mirrored background on the negative side (left margin).
+  const tileIndexStart = baseTileIndexStart - 1;
+  const tileStartX = -wrappedOffset - drawWidth;
+  const tileCount = Math.ceil(width / drawWidth) + 3;
 
   for (let i = 0; i < tileCount; i += 1) {
     const tileIndex = tileIndexStart + i;
@@ -308,7 +311,15 @@ function syncGroundLayer(PIXI, layers, sceneState, width, groundY, height) {
   }
 }
 
-function syncDecorLayer(PIXI, textureCache, layers, sceneState, width, groundY) {
+function syncDecorLayer(
+  PIXI,
+  textureCache,
+  layers,
+  sceneState,
+  visibleWorldWidth,
+  groundY,
+  decorLayoutBaseWidth = 720
+) {
   clearContainer(layers.decor);
 
   const images = sceneState?.resources?.images;
@@ -330,7 +341,7 @@ function syncDecorLayer(PIXI, textureCache, layers, sceneState, width, groundY) 
   const tileIndexStart = Math.floor(sceneState.skyOffset / sceneDrawWidth);
   const wrappedOffset = ((sceneState.skyOffset % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth;
   const tileStartX = -wrappedOffset;
-  const tileCount = Math.ceil(width / sceneDrawWidth) + 2;
+  const tileCount = Math.ceil(visibleWorldWidth / sceneDrawWidth) + 2;
 
   function addSprite(texture, x, y, w, h, mirrored, tileX) {
     if (!texture) {
@@ -363,20 +374,23 @@ function syncDecorLayer(PIXI, textureCache, layers, sceneState, width, groundY) 
     const tileX = tileStartX + i * sceneDrawWidth;
     const mirrored = tileIndex % 2 !== 0;
 
-    addSprite(treeLeft, width - 1100, -40, 1000, 740, mirrored, tileX);
-    addSprite(treeLeft, width - 600, -40, 1000, 740, mirrored, tileX);
-    addSprite(lamp, width - 400, 0, 200, 700, mirrored, tileX);
-    addSprite(bushSmall, width - 600, 535, 165, 165, mirrored, tileX);
-    addSprite(bushLarge, width - 450, 530, 220, 180, mirrored, tileX);
-    addSprite(treeLeft, width - 0, -40, 1000, 740, mirrored, tileX);
-    addSprite(bushMedium, width + 40, 530, 148, 176, mirrored, tileX);
-    addSprite(lamp, width + 200, 0, 200, 700, mirrored, tileX);
-    addSprite(treeRight, width + 400, -40, 1000, 740, mirrored, tileX);
-    addSprite(bushLarge, width + 300, 530, 220, 180, mirrored, tileX);
-    addSprite(bushMedium, width + 560, 530, 148, 172, mirrored, tileX);
-    addSprite(bushSmall, width + 900, 535, 165, 165, mirrored, tileX);
-    addSprite(lamp, width + 1200, 0, 200, 700, mirrored, tileX);
-    addSprite(bushLarge, width + 1400, 530, 220, 180, mirrored, tileX);
+    // Keep decorative composition anchored to the original design width.
+    // The camera can reveal more tiles on wide screens, but the layout within each tile
+    // should not drift with the visible viewport width.
+    addSprite(treeLeft, decorLayoutBaseWidth - 1100, -40, 1000, 740, mirrored, tileX);
+    addSprite(treeLeft, decorLayoutBaseWidth - 600, -40, 1000, 740, mirrored, tileX);
+    addSprite(lamp, decorLayoutBaseWidth - 400, 0, 200, 700, mirrored, tileX);
+    addSprite(bushSmall, decorLayoutBaseWidth - 600, 535, 165, 165, mirrored, tileX);
+    addSprite(bushLarge, decorLayoutBaseWidth - 450, 530, 220, 180, mirrored, tileX);
+    addSprite(treeLeft, decorLayoutBaseWidth, -40, 1000, 740, mirrored, tileX);
+    addSprite(bushMedium, decorLayoutBaseWidth + 40, 530, 148, 176, mirrored, tileX);
+    addSprite(lamp, decorLayoutBaseWidth + 200, 0, 200, 700, mirrored, tileX);
+    addSprite(treeRight, decorLayoutBaseWidth + 400, -40, 1000, 740, mirrored, tileX);
+    addSprite(bushLarge, decorLayoutBaseWidth + 300, 530, 220, 180, mirrored, tileX);
+    addSprite(bushMedium, decorLayoutBaseWidth + 560, 530, 148, 172, mirrored, tileX);
+    addSprite(bushSmall, decorLayoutBaseWidth + 900, 535, 165, 165, mirrored, tileX);
+    addSprite(lamp, decorLayoutBaseWidth + 1200, 0, 200, 700, mirrored, tileX);
+    addSprite(bushLarge, decorLayoutBaseWidth + 1400, 530, 220, 180, mirrored, tileX);
   }
 }
 
@@ -790,14 +804,26 @@ function syncWarningsLayer(PIXI, layers, sceneState, elapsedSeconds) {
   }
 }
 
-function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSeconds, width, groundY, height) {
+function syncTutorialHintLayer(
+  PIXI,
+  textureCache,
+  layers,
+  sceneState,
+  elapsedSeconds,
+  width,
+  groundY,
+  height,
+  layoutState = null
+) {
   clearContainer(layers.tutorialHint);
 
   if (sceneState?.mode !== STATES.paused) {
     return;
   }
 
-  const hintY = height * 0.58;
+  const hintY = Number.isFinite(layoutState?.gameplayTokens?.tutorialTextY)
+    ? layoutState.gameplayTokens.tutorialTextY
+    : height * 0.58;
 
   addTextLabel(
     PIXI,
@@ -807,7 +833,7 @@ function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSe
     hintY,
     {
       fontFamily: "GameFont",
-      fontSize: 52,
+      fontSize: 60,
       fontWeight: "700",
       fill: 0x000000,
       align: "center"
@@ -823,7 +849,7 @@ function syncTutorialHintLayer(PIXI, textureCache, layers, sceneState, elapsedSe
     hintY - 2,
     {
       fontFamily: "GameFont",
-      fontSize: 52,
+      fontSize: 60,
       fontWeight: "700",
       fill: 0xffffff,
       align: "center"
@@ -1086,7 +1112,7 @@ export function createPixiRenderer(options = {}) {
         groundY,
         worldMetrics.worldHeight
       );
-      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, worldMetrics.worldWidth, groundY);
+      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, worldMetrics.worldWidth, groundY, width);
       syncGroundLayer(
         PIXIRef,
         layers,
@@ -1129,7 +1155,8 @@ export function createPixiRenderer(options = {}) {
         frame?.elapsedSeconds ?? 0,
         worldMetrics.worldWidth,
         groundY,
-        worldMetrics.worldHeight
+        worldMetrics.worldHeight,
+        frame?.layoutState || null
       );
       app.render();
     },

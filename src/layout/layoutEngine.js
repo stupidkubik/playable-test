@@ -156,8 +156,32 @@ function buildUiTokens({
   const refScale = clamp(Math.min(safeRect.width / 720, safeRect.height / 1280), 0.62, 1.35);
   const densityScale = clampByDensity(refScale, uiDensity, 0.9);
   const isLandscape = bucket.startsWith("landscape");
-
-  const footerHeight = roundPx(clamp(isLandscape ? safeRect.height * 0.16 : safeRect.height * 0.12, 64, 156));
+  const portraitNarrowWidthProgress = isLandscape ? 0 : clamp((500 - safeRect.width) / 180, 0, 1);
+  const portraitFooterHeightFactor = 1 - portraitNarrowWidthProgress * 0.14;
+  const footerHeight = roundPx(
+    clamp(
+      isLandscape ? safeRect.height * 0.16 : safeRect.height * 0.12 * portraitFooterHeightFactor,
+      isLandscape ? 64 : 60,
+      156
+    )
+  );
+  const landscapeFooterCtaBoost = isLandscape ? clamp(safeRect.width / 1000, 0.96, 1.15) : 1;
+  const footerCtaFont = roundPx(
+    clamp(
+      22 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.08 : 1),
+      isLandscape ? 12 : 10,
+      isLandscape ? 24 : 22
+    )
+  );
+  const footerCtaPadX = roundPx(
+    clamp(18 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.08 : 1), isLandscape ? 12 : 10, 22)
+  );
+  const footerCtaPadY = roundPx(
+    clamp(10 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 7 : 6, 12)
+  );
+  const footerCtaMinWidth = roundPx(
+    clamp(isLandscape ? safeRect.width * 0.13 : 0, isLandscape ? 118 : 0, isLandscape ? 210 : 0)
+  );
   const overlayPadding = roundPx(clamp(18 * densityScale, 10, 28));
   const endModalMaxWidth = roundPx(
     clamp(isLandscape ? safeRect.width * 0.62 : safeRect.width * 0.88, 280, isLandscape ? 560 : 520)
@@ -172,15 +196,16 @@ function buildUiTokens({
     hudPadX: roundPx(clamp(14 * densityScale, 8, 20)),
     hudPadY: roundPx(clamp(14 * densityScale, 8, 20)),
     hudGap: roundPx(clamp(8 * densityScale, 4, 10)),
-    hudHeartSize: roundPx(clamp(24 * densityScale, 14, 28)),
-    counterImageW: roundPx(clamp(92 * densityScale, 54, 108)),
-    counterFontSize: roundPx(clamp(22 * densityScale, 12, 24)),
+    hudHeartSize: roundPx(clamp(50 * densityScale, 16, 32)),
+    counterImageW: roundPx(clamp(200 * densityScale, 54, 108)),
+    counterFontSize: roundPx(clamp(50 * densityScale, 13, 26)),
     footerHeight,
     footerPadX: roundPx(clamp(12 * densityScale, 8, 14)),
     footerPadBottom: roundPx(clamp(14 * densityScale, 6, 18)),
-    footerCtaFont: roundPx(clamp(22 * densityScale, 10, 22)),
-    footerCtaPadX: roundPx(clamp(18 * densityScale, 10, 20)),
-    footerCtaPadY: roundPx(clamp(10 * densityScale, 6, 12)),
+    footerCtaFont,
+    footerCtaPadX,
+    footerCtaPadY,
+    footerCtaMinWidth,
     overlayPadding,
     endModalMaxWidth,
     endModalMaxHeight,
@@ -240,6 +265,9 @@ function buildGameplayTokens({
   const runtimeGroundY = roundPx(designWorldHeight - playerGroundOffset);
   const baseVisualScale = roundPx(clamp(cameraTransform.scale, 0.6, 1.8));
   const compact = bucket.startsWith("landscape");
+  const tutorialTextLiftScreenPx = 50;
+  const tutorialTextLiftWorld = tutorialTextLiftScreenPx / Math.max(cameraTransform.scale || 1, 0.001);
+  const tutorialTextBaseY = cameraViewWorldRect.height * (compact ? 0.52 : 0.57);
 
   return {
     runtimeWorldW: cameraViewWorldRect.width,
@@ -252,7 +280,7 @@ function buildGameplayTokens({
     obstacleVisualScale: baseVisualScale,
     cleanupMarginX: roundPx(clamp(cameraViewWorldRect.width * 0.15, 120, 360)),
     warningLabelScale: compact ? 0.9 : 1,
-    tutorialTextY: roundPx(cameraViewWorldRect.height * (compact ? 0.52 : 0.57)),
+    tutorialTextY: roundPx(tutorialTextBaseY - tutorialTextLiftWorld),
     tutorialHandY: roundPx(cameraViewWorldRect.height * (compact ? 0.71 : 0.74)),
     gameplaySafeTop: roundPx(uiTokens.hudPadY + uiTokens.hudHeartSize + 8),
     gameplaySafeBottom: roundPx(uiTokens.footerHeight + 12),
@@ -306,6 +334,7 @@ function buildCssVarMap(layoutState) {
     "--layout-footer-cta-font": `${uiTokens.footerCtaFont}px`,
     "--layout-footer-cta-pad-x": `${uiTokens.footerCtaPadX}px`,
     "--layout-footer-cta-pad-y": `${uiTokens.footerCtaPadY}px`,
+    "--layout-footer-cta-min-w": `${uiTokens.footerCtaMinWidth}px`,
     "--layout-overlay-padding": `${uiTokens.overlayPadding}px`,
     "--layout-end-modal-max-w": `${uiTokens.endModalMaxWidth}px`,
     "--layout-end-modal-max-h": `${uiTokens.endModalMaxHeight}px`,

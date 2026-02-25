@@ -54,7 +54,7 @@ body {
   right: 14px;
   z-index: 2;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   pointer-events: none;
 }
@@ -239,7 +239,7 @@ canvas {
   height: 136px;
   z-index: 130;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-end;
   padding: 0 12px 15px;
   background-image: var(--footer-portrait);
@@ -898,10 +898,7 @@ body {
 
 .app-shell.app-shell--fullscreen .overlay {
   padding:
-    calc(var(--safe-top) + var(--overlay-pad))
-    calc(var(--safe-right) + var(--overlay-pad))
-    calc(var(--safe-bottom) + var(--overlay-pad))
-    calc(var(--safe-left) + var(--overlay-pad));
+    calc(var(--safe-top) + var(--overlay-pad)) calc(var(--safe-right) + var(--overlay-pad)) calc(var(--safe-bottom) + var(--overlay-pad)) calc(var(--safe-left) + var(--overlay-pad));
 }
 
 .app-shell.app-shell--fullscreen #end-overlay {
@@ -914,10 +911,7 @@ body {
   right: auto;
   width: var(--game-viewport-w);
   padding:
-    calc(var(--safe-top) + var(--hud-pad-y))
-    calc(var(--safe-right) + var(--hud-pad-x))
-    0
-    calc(var(--safe-left) + var(--hud-pad-x));
+    calc(var(--safe-top) + var(--hud-pad-y) + clamp(4px, calc(4px * var(--runtime-ui-scale)), 5px)) calc(var(--safe-right) + var(--hud-pad-x) + clamp(4px, calc(4px * var(--runtime-ui-scale)), 5px)) 0 calc(var(--safe-left) + var(--hud-pad-x) + clamp(2px, calc(4px * var(--runtime-ui-scale)), 5px));
 }
 
 .app-shell.app-shell--fullscreen .hp-container {
@@ -950,7 +944,7 @@ body {
   transform: translate(-50%, -50%);
   width: min(calc(var(--game-viewport-w) - 24px), 92%);
   max-width: calc(var(--game-viewport-w) - 24px);
-  font-size: clamp(18px, calc(56px * var(--runtime-ui-scale)), 56px);
+  font-size: clamp(30px, calc(62px * var(--runtime-ui-scale)), 62px);
 }
 
 .app-shell.app-shell--fullscreen .intro-hand-wrap {
@@ -970,10 +964,7 @@ body {
   bottom: var(--game-viewport-bottom-gap);
   height: calc(var(--footer-base-h) + var(--safe-bottom));
   padding:
-    0
-    calc(var(--safe-right) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)))
-    calc(var(--safe-bottom) + var(--layout-footer-pad-bottom, clamp(6px, calc(15px * var(--runtime-ui-scale)), 15px)))
-    calc(var(--safe-left) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)));
+    0 calc(var(--safe-right) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px))) calc(var(--safe-bottom) + var(--layout-footer-pad-bottom, clamp(6px, calc(15px * var(--runtime-ui-scale)), 15px))) calc(var(--safe-left) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)));
   background-image: var(--footer-portrait);
   background-size: 100% 100%;
   background-position: center bottom;
@@ -987,17 +978,16 @@ body {
   border-width: clamp(2px, calc(3px * var(--runtime-ui-scale)), 3px);
   border-radius: clamp(8px, calc(14px * var(--runtime-ui-scale)), 14px);
   font-size: var(--layout-footer-cta-font, clamp(10px, calc(22px * var(--runtime-ui-scale)), 22px));
+  min-width: var(--layout-footer-cta-min-w, 0px);
+  white-space: nowrap;
   padding:
-    var(--layout-footer-cta-pad-y, clamp(6px, calc(10px * var(--runtime-ui-scale)), 10px))
-    var(--layout-footer-cta-pad-x, clamp(10px, calc(18px * var(--runtime-ui-scale)), 18px));
+    var(--layout-footer-cta-pad-y, clamp(6px, calc(10px * var(--runtime-ui-scale)), 10px)) var(--layout-footer-cta-pad-x, clamp(10px, calc(18px * var(--runtime-ui-scale)), 18px));
 }
 
 .app-shell.app-shell--fullscreen .end-content {
   width: min(100%, var(--layout-end-modal-max-w, calc(var(--game-viewport-w) - 8px)));
-  max-height: min(
-    var(--layout-end-modal-max-h, calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px)),
-    calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px)
-  );
+  max-height: min(var(--layout-end-modal-max-h, calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px)),
+      calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px));
   padding: clamp(8px, var(--layout-overlay-padding, calc(20px * var(--runtime-ui-scale))), 24px);
 }
 
@@ -1049,16 +1039,13 @@ body {
   font-size: var(--layout-end-cta-font, clamp(11px, calc(26px * var(--runtime-ui-scale)), 26px));
   letter-spacing: clamp(0.3px, calc(1px * var(--runtime-ui-scale)), 1px);
   padding:
-    clamp(8px, calc(16px * var(--runtime-ui-scale)), 16px)
-    clamp(16px, calc(48px * var(--runtime-ui-scale)), 48px);
+    clamp(8px, calc(16px * var(--runtime-ui-scale)), 16px) clamp(16px, calc(48px * var(--runtime-ui-scale)), 48px);
 }
 
 .app-shell.app-shell--fullscreen .fail-image {
-  width: min(
-    var(--layout-fail-image-max, clamp(120px, calc(400px * var(--runtime-ui-scale)), 400px)),
-    calc(var(--game-viewport-w) * 0.75),
-    calc(var(--game-viewport-h) * 0.55)
-  );
+  width: min(var(--layout-fail-image-max, clamp(120px, calc(400px * var(--runtime-ui-scale)), 400px)),
+      calc(var(--game-viewport-w) * 0.75),
+      calc(var(--game-viewport-h) * 0.55));
   height: auto;
 }
 
@@ -1093,6 +1080,5 @@ body {
 
 .app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .cta-button {
   padding:
-    clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)
-    clamp(16px, calc(34px * var(--runtime-ui-scale)), 34px);
+    clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px) clamp(16px, calc(34px * var(--runtime-ui-scale)), 34px);
 }
