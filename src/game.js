@@ -475,19 +475,7 @@ function stopMusic() {
 }
 
 function comboPraiseForStreak(streak) {
-  if (streak < 6) {
-    return null;
-  }
-  if (streak === 6) {
-    return COMBO_PRAISE_RULES[0];
-  }
-  if (streak === 10) {
-    return COMBO_PRAISE_RULES[1];
-  }
-  if (streak === 14) {
-    return COMBO_PRAISE_RULES[2];
-  }
-  return null;
+  return COMBO_PRAISE_RULES.find((rule) => streak === rule.streak) || null;
 }
 
 function resetCollectCombo({ clearPopups = false } = {}) {
