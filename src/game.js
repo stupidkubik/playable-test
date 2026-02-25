@@ -165,7 +165,7 @@ let activeRenderer = null;
 
 viewportManager.subscribe(
   (viewportState) => {
-    activeRenderer?.resize?.(viewportState);
+    activeRenderer?.resize?.(viewportState.layoutState || viewportState);
   },
   { immediate: false }
 );
@@ -1021,9 +1021,11 @@ function ensureRenderer() {
 
 function render(elapsedSeconds) {
   syncGameHeader();
+  const viewportState = viewportManager.getState();
   ensureRenderer().render({
     elapsedSeconds,
-    state
+    state,
+    layoutState: viewportState.layoutState || null
   });
 }
 
@@ -1127,7 +1129,8 @@ async function boot() {
 
   try {
     await ensureRenderer().init?.();
-    ensureRenderer().resize?.(viewportManager.getState());
+    const viewportState = viewportManager.getState();
+    ensureRenderer().resize?.(viewportState.layoutState || viewportState);
     await loadResources();
     resetWorld();
   } catch {
