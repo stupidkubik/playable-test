@@ -119,12 +119,16 @@ function buildLayerContainers(PIXI, stage) {
     "tutorialHint"
   ];
   const layers = Object.create(null);
+  const worldRoot = new PIXI.Container();
+  worldRoot.label = "layer-root:world";
+  layers.worldRoot = worldRoot;
+  stage.addChild(worldRoot);
 
   for (const name of names) {
     const container = new PIXI.Container();
     container.label = `layer:${name}`;
     layers[name] = container;
-    stage.addChild(container);
+    worldRoot.addChild(container);
   }
 
   return layers;
@@ -929,6 +933,24 @@ export function createPixiRenderer(options = {}) {
     return Math.max(0, Math.min(height, runtimeGroundY));
   }
 
+  function syncWorldRootTransform(frame) {
+    const worldRoot = layers?.worldRoot;
+    if (!worldRoot) {
+      return;
+    }
+
+    // Phase 4 foundation: keep a single world root ready for camera transforms.
+    // Current behavior remains 1:1 until layout camera mapping is enabled.
+    worldRoot.x = 0;
+    worldRoot.y = 0;
+    worldRoot.scale.set(1, 1);
+    worldRoot.rotation = 0;
+    worldRoot.alpha = 1;
+    worldRoot.visible = true;
+
+    void frame;
+  }
+
   return {
     backend: "pixi",
     async init() {
@@ -1008,6 +1030,7 @@ export function createPixiRenderer(options = {}) {
 
       const sceneState = frame?.state || null;
       const groundY = resolveFrameGroundY(frame);
+      syncWorldRootTransform(frame);
       syncSkyLayer(
         PIXIRef,
         textureCache,
