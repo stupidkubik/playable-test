@@ -41,39 +41,7 @@ function buildLayoutViewport(layoutState) {
   };
 }
 
-function buildContainViewport(layoutState, worldWidth, worldHeight) {
-  const shellRect = layoutState.screenRect;
-  const scale = Math.min(shellRect.width / worldWidth, shellRect.height / worldHeight);
-  const viewportWidth = roundPx(worldWidth * scale);
-  const viewportHeight = roundPx(worldHeight * scale);
-  const viewportX = roundPx((shellRect.width - viewportWidth) * 0.5);
-  const viewportY = roundPx((shellRect.height - viewportHeight) * 0.5);
-
-  return {
-    scale,
-    uiScale: scale,
-    viewportRect: {
-      x: viewportX,
-      y: viewportY,
-      width: viewportWidth,
-      height: viewportHeight
-    },
-    viewportPageRect: {
-      left: shellRect.x + viewportX,
-      top: shellRect.y + viewportY,
-      width: viewportWidth,
-      height: viewportHeight
-    },
-    gaps: {
-      left: viewportX,
-      top: viewportY,
-      right: roundPx(shellRect.width - viewportX - viewportWidth),
-      bottom: roundPx(shellRect.height - viewportY - viewportHeight)
-    }
-  };
-}
-
-function applyLegacyViewportCssVars(root, nextState) {
+function applyViewportCssVars(root, nextState) {
   if (!root?.style || !nextState) {
     return;
   }
@@ -85,7 +53,6 @@ function applyLegacyViewportCssVars(root, nextState) {
   root.style.setProperty("--game-viewport-h", `${viewportRect.height}px`);
   root.style.setProperty("--game-viewport-right-gap", `${gaps.right}px`);
   root.style.setProperty("--game-viewport-bottom-gap", `${gaps.bottom}px`);
-  root.style.setProperty("--game-scale", `${scale}`);
   root.style.setProperty("--ui-scale", `${uiScale}`);
 
   root.dataset.viewportOrientation = nextState.orientation;
@@ -135,7 +102,7 @@ export function createViewportManager(options = {}) {
 
   function notify(nextLayoutState) {
     state = mapLayoutState(nextLayoutState);
-    applyLegacyViewportCssVars(root, state);
+    applyViewportCssVars(root, state);
 
     for (const subscriber of subscribers) {
       subscriber(state);
@@ -151,7 +118,7 @@ export function createViewportManager(options = {}) {
   function getState() {
     if (!state) {
       state = mapLayoutState(layoutEngine.getState());
-      applyLegacyViewportCssVars(root, state);
+      applyViewportCssVars(root, state);
     }
 
     return state;
@@ -190,10 +157,7 @@ export function createViewportManager(options = {}) {
     getState,
     subscribe,
     projectWorldToScreen,
-    projectScreenToWorld,
-    getLayoutState() {
-      return getState().layoutState;
-    }
+    projectScreenToWorld
   };
 }
 
