@@ -918,6 +918,17 @@ export function createPixiRenderer(options = {}) {
     }
   }
 
+  function resolveFrameGroundY(frame) {
+    const fallbackGroundY = options.groundY ?? height * 0.66;
+    const runtimeGroundY = frame?.layoutState?.gameplayTokens?.runtimeGroundY;
+
+    if (!Number.isFinite(runtimeGroundY)) {
+      return fallbackGroundY;
+    }
+
+    return Math.max(0, Math.min(height, runtimeGroundY));
+  }
+
   return {
     backend: "pixi",
     async init() {
@@ -996,22 +1007,23 @@ export function createPixiRenderer(options = {}) {
       }
 
       const sceneState = frame?.state || null;
+      const groundY = resolveFrameGroundY(frame);
       syncSkyLayer(
         PIXIRef,
         textureCache,
         layers,
         sceneState,
         width,
-        options.groundY ?? height * 0.66,
+        groundY,
         height
       );
-      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, width, options.groundY ?? height * 0.66);
+      syncDecorLayer(PIXIRef, textureCache, layers, sceneState, width, groundY);
       syncGroundLayer(
         PIXIRef,
         layers,
         sceneState,
         width,
-        options.groundY ?? height * 0.66,
+        groundY,
         height
       );
       syncCollectiblesLayer(
@@ -1028,7 +1040,7 @@ export function createPixiRenderer(options = {}) {
         sceneState,
         frame?.elapsedSeconds ?? 0
       );
-      syncFinishLayer(PIXIRef, textureCache, layers, sceneState, options.groundY ?? height * 0.66);
+      syncFinishLayer(PIXIRef, textureCache, layers, sceneState, groundY);
       syncEnemyLayer(
         PIXIRef,
         textureCache,
@@ -1047,7 +1059,7 @@ export function createPixiRenderer(options = {}) {
         sceneState,
         frame?.elapsedSeconds ?? 0,
         width,
-        options.groundY ?? height * 0.66,
+        groundY,
         height
       );
       app.render();

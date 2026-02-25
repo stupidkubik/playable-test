@@ -92,12 +92,23 @@ export const SPAWN_SEQUENCE = Object.freeze([
   { type: "finish", distance: 18 }
 ]);
 
-export function spawnDistanceToPx(distance) {
-  return distance * GAME_WIDTH;
+function metricOrDefault(metrics, key, fallback) {
+  const value = metrics?.[key];
+  return Number.isFinite(value) ? value : fallback;
 }
 
-export function shouldSpawn(distancePx, traveledPx) {
-  return traveledPx >= distancePx - GAME_WIDTH;
+export function spawnDistanceToPx(distance, metrics = null) {
+  const worldWidth = metricOrDefault(metrics, "worldWidth", GAME_WIDTH);
+  return distance * worldWidth;
+}
+
+export function shouldSpawn(distancePx, traveledPx, metrics = null) {
+  const leadWidth = metricOrDefault(
+    metrics,
+    "spawnLeadViewportWidth",
+    metricOrDefault(metrics, "worldWidth", GAME_WIDTH)
+  );
+  return traveledPx >= distancePx - leadWidth;
 }
 
 export function intersects(a, b) {
@@ -109,8 +120,9 @@ export function intersects(a, b) {
   );
 }
 
-export function computeJumpY(startY, progress) {
-  const lift = Math.sin(progress * Math.PI) * PLAYER_CONFIG.jumpHeight;
+export function computeJumpY(startY, progress, metrics = null) {
+  const jumpHeight = metricOrDefault(metrics, "jumpHeight", PLAYER_CONFIG.jumpHeight);
+  const lift = Math.sin(progress * Math.PI) * jumpHeight;
   return startY - lift;
 }
 
@@ -118,11 +130,15 @@ export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function playerHitbox(player) {
-  const width = player.width * HITBOX_CONFIG.playerScaleX;
-  const height = player.height * HITBOX_CONFIG.playerScaleY;
-  const offsetX = (player.width - width) / 2 + player.width * HITBOX_CONFIG.playerOffsetX;
-  const offsetY = player.height - height + player.height * HITBOX_CONFIG.playerOffsetY;
+export function playerHitbox(player, metrics = null) {
+  const scaleX = metricOrDefault(metrics, "playerHitboxScaleX", HITBOX_CONFIG.playerScaleX);
+  const scaleY = metricOrDefault(metrics, "playerHitboxScaleY", HITBOX_CONFIG.playerScaleY);
+  const offsetRatioX = metricOrDefault(metrics, "playerHitboxOffsetX", HITBOX_CONFIG.playerOffsetX);
+  const offsetRatioY = metricOrDefault(metrics, "playerHitboxOffsetY", HITBOX_CONFIG.playerOffsetY);
+  const width = player.width * scaleX;
+  const height = player.height * scaleY;
+  const offsetX = (player.width - width) / 2 + player.width * offsetRatioX;
+  const offsetY = player.height - height + player.height * offsetRatioY;
 
   return {
     x: player.x + offsetX,
@@ -132,11 +148,15 @@ export function playerHitbox(player) {
   };
 }
 
-export function enemyHitbox(enemy) {
-  const width = enemy.width * HITBOX_CONFIG.enemyScaleX;
-  const height = enemy.height * HITBOX_CONFIG.enemyScaleY;
-  const offsetX = (enemy.width - width) / 2 + enemy.width * HITBOX_CONFIG.enemyOffsetX;
-  const offsetY = enemy.height - height + enemy.height * HITBOX_CONFIG.enemyOffsetY;
+export function enemyHitbox(enemy, metrics = null) {
+  const scaleX = metricOrDefault(metrics, "enemyHitboxScaleX", HITBOX_CONFIG.enemyScaleX);
+  const scaleY = metricOrDefault(metrics, "enemyHitboxScaleY", HITBOX_CONFIG.enemyScaleY);
+  const offsetRatioX = metricOrDefault(metrics, "enemyHitboxOffsetX", HITBOX_CONFIG.enemyOffsetX);
+  const offsetRatioY = metricOrDefault(metrics, "enemyHitboxOffsetY", HITBOX_CONFIG.enemyOffsetY);
+  const width = enemy.width * scaleX;
+  const height = enemy.height * scaleY;
+  const offsetX = (enemy.width - width) / 2 + enemy.width * offsetRatioX;
+  const offsetY = enemy.height - height + enemy.height * offsetRatioY;
 
   return {
     x: enemy.x + offsetX,
@@ -146,8 +166,8 @@ export function enemyHitbox(enemy) {
   };
 }
 
-export function obstacleHitbox(obstacle) {
-  const size = Math.max(4, HITBOX_CONFIG.obstacleShrink);
+export function obstacleHitbox(obstacle, metrics = null) {
+  const size = Math.max(4, metricOrDefault(metrics, "obstacleHitboxShrink", HITBOX_CONFIG.obstacleShrink));
   return {
     x: obstacle.x + size / 2,
     y: obstacle.y + size / 2,
@@ -156,7 +176,7 @@ export function obstacleHitbox(obstacle) {
   };
 }
 
-export function collectibleIntersects(playerBox, collectible) {
+export function collectibleIntersects(playerBox, collectible, metrics = null) {
   const centerX = collectible.x + collectible.width / 2;
   const centerY = collectible.y + collectible.height / 2;
 
@@ -165,7 +185,8 @@ export function collectibleIntersects(playerBox, collectible) {
   const dx = centerX - nearestX;
   const dy = centerY - nearestY;
 
-  return dx * dx + dy * dy <= HITBOX_CONFIG.collectibleRadius * HITBOX_CONFIG.collectibleRadius;
+  const radius = metricOrDefault(metrics, "collectibleRadius", HITBOX_CONFIG.collectibleRadius);
+  return dx * dx + dy * dy <= radius * radius;
 }
 
 export function getCollectibleValue(type, random = Math.random) {

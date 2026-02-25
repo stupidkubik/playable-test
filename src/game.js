@@ -176,8 +176,45 @@ function allocateId() {
   return id;
 }
 
+function currentLayoutState() {
+  return viewportManager.getState().layoutState || null;
+}
+
+function currentLogicMetrics() {
+  const layoutState = currentLayoutState();
+  const gameplayTokens = layoutState?.gameplayTokens;
+
+  // Phase 3 compatibility:
+  // keep gameplay simulation in design-world dimensions until Phase 4 renderer/camera
+  // is ready to consume expanded cameraViewWorldRect without clipping/desync.
+  return {
+    worldWidth: GAME_WIDTH,
+    worldHeight: GAME_HEIGHT,
+    cameraViewWorldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
+    cameraViewWorldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
+    spawnLeadViewportWidth: GAME_WIDTH,
+    cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
+    jumpHeight: PLAYER_CONFIG.jumpHeight
+  };
+}
+
+function currentRuntimeWorldWidth() {
+  return currentLogicMetrics().worldWidth;
+}
+
+function currentGroundY() {
+  const layoutState = currentLayoutState();
+  return layoutState?.gameplayTokens?.runtimeGroundY ?? GROUND_Y;
+}
+
+function currentPlayerBaseX() {
+  const layoutState = currentLayoutState();
+  return layoutState?.gameplayTokens?.playerBaseX ?? Math.round(GAME_WIDTH * PLAYER_CONFIG.xPosition);
+}
+
 function resetPlayerPosition() {
-  state.player.y = GROUND_Y - state.player.height;
+  state.player.x = currentPlayerBaseX();
+  state.player.y = currentGroundY() - state.player.height;
   state.player.jumpStartY = state.player.y;
   state.player.jumpProgress = 0;
   state.player.isJumping = false;
@@ -527,17 +564,18 @@ function spawnWarningLabel(x) {
   state.warningLabels.push({
     id: allocateId(),
     x,
-    y: GROUND_Y - 200,
+    y: currentGroundY() - 200,
     pulseSeed: Math.random() * Math.PI * 2
   });
 }
 
 function spawnEnemy() {
+  const runtimeWorldWidth = currentRuntimeWorldWidth();
   const scale = enemyCollisionScale;
 
   const enemy = {
     id: allocateId(),
-    x: GAME_WIDTH + GAME_WIDTH * 0.5,
+    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
     y: 0,
     width: Math.round(enemyBaseFrame.w * scale),
     height: Math.round(enemyBaseFrame.h * scale),
@@ -547,21 +585,22 @@ function spawnEnemy() {
     isTutorialEnemy: false
   };
 
-  enemy.y = GROUND_Y - enemy.height;
+  enemy.y = currentGroundY() - enemy.height;
   state.enemies.push(enemy);
   return enemy;
 }
 
 function spawnObstacle() {
+  const runtimeWorldWidth = currentRuntimeWorldWidth();
   const width = Math.round(obstacleBaseFrame.w * obstacleBaseScale);
   const height = Math.round(obstacleBaseFrame.h * obstacleBaseScale);
 
   const obstacle = {
     id: allocateId(),
-    x: GAME_WIDTH + GAME_WIDTH * 0.5,
+    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
     width,
     height,
-    y: GROUND_Y - height,
+    y: currentGroundY() - height,
     pulseSeed: Math.random() * Math.PI * 2,
     speed: SPEED_CONFIG.base
   };
@@ -603,16 +642,17 @@ function collectibleRenderSize(type) {
 }
 
 function spawnCollectible(yOffset = 0) {
+  const runtimeWorldWidth = currentRuntimeWorldWidth();
   const type = Math.random() < 0.6 ? "dollar" : "paypalCard";
   const { width, height } = collectibleRenderSize(type);
   const baselineLift = yOffset > 0 ? 0 : collectibleBaseLift;
 
   const collectible = {
     id: allocateId(),
-    x: GAME_WIDTH + GAME_WIDTH * 0.5,
+    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
     width,
     height,
-    y: GROUND_Y - height - yOffset - baselineLift,
+    y: currentGroundY() - height - yOffset - baselineLift,
     speed: SPEED_CONFIG.base,
     collected: false,
     collectibleType: type,
@@ -623,10 +663,11 @@ function spawnCollectible(yOffset = 0) {
 }
 
 function spawnFinishLine() {
+  const runtimeWorldWidth = currentRuntimeWorldWidth();
   state.finishLine = {
     id: allocateId(),
-    x: GAME_WIDTH + GAME_WIDTH * 0.5,
-    y: GROUND_Y - 182,
+    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
+    y: currentGroundY() - 182,
     width: 240,
     height: 210,
     speed: SPEED_CONFIG.base,
@@ -651,7 +692,9 @@ function spawnEntity(entry) {
   if (entry.type === "obstacle") {
     spawnObstacle();
     if (entry.warningLabel) {
-      spawnWarningLabel(GAME_WIDTH + GAME_WIDTH * 0.5);
+      const runtimeWorldWidth = currentRuntimeWorldWidth();
+      const spawnX = runtimeWorldWidth + runtimeWorldWidth * 0.5;
+      spawnWarningLabel(spawnX);
     }
     return;
   }
@@ -667,11 +710,12 @@ function spawnEntity(entry) {
 }
 
 function checkSpawns() {
+  const logicMetrics = currentLogicMetrics();
   while (state.spawnIndex < SPAWN_SEQUENCE.length) {
     const entry = SPAWN_SEQUENCE[state.spawnIndex];
-    const spawnDistance = spawnDistanceToPx(entry.distance);
+    const spawnDistance = spawnDistanceToPx(entry.distance, logicMetrics);
 
-    if (!shouldSpawn(spawnDistance, state.distanceTraveled)) {
+    if (!shouldSpawn(spawnDistance, state.distanceTraveled, logicMetrics)) {
       break;
     }
 
@@ -689,9 +733,9 @@ function updatePlayer(deltaSeconds, deltaMs) {
     if (state.player.jumpProgress >= 1) {
       state.player.isJumping = false;
       state.player.jumpProgress = 0;
-      state.player.y = GROUND_Y - state.player.height;
+      state.player.y = currentGroundY() - state.player.height;
     } else {
-      state.player.y = computeJumpY(state.player.jumpStartY, state.player.jumpProgress);
+      state.player.y = computeJumpY(state.player.jumpStartY, state.player.jumpProgress, currentLogicMetrics());
     }
   }
 
@@ -789,14 +833,15 @@ function collectItem(item) {
 }
 
 function checkCollisions() {
-  const playerBox = playerHitbox(state.player);
+  const logicMetrics = currentLogicMetrics();
+  const playerBox = playerHitbox(state.player, logicMetrics);
 
   for (const enemy of state.enemies) {
     if (state.player.invincibilityMs > 0) {
       break;
     }
 
-    if (intersects(playerBox, enemyHitbox(enemy))) {
+    if (intersects(playerBox, enemyHitbox(enemy, logicMetrics))) {
       hitPlayer();
       break;
     }
@@ -807,7 +852,7 @@ function checkCollisions() {
       break;
     }
 
-    if (intersects(playerBox, obstacleHitbox(obstacle))) {
+    if (intersects(playerBox, obstacleHitbox(obstacle, logicMetrics))) {
       hitPlayer();
       break;
     }
@@ -818,7 +863,7 @@ function checkCollisions() {
       continue;
     }
 
-    if (collectibleIntersects(playerBox, collectible)) {
+    if (collectibleIntersects(playerBox, collectible, logicMetrics)) {
       collectItem(collectible);
     }
   }
@@ -895,9 +940,10 @@ function triggerFinishConfetti() {
     return;
   }
 
-  const spawnY = GAME_HEIGHT * CONFETTI_CONFIG.SIDE_SPAWN_HEIGHT;
+  const logicMetrics = currentLogicMetrics();
+  const spawnY = logicMetrics.worldHeight * CONFETTI_CONFIG.SIDE_SPAWN_HEIGHT;
   burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures);
-  burstConfettiSide(GAME_WIDTH - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
+  burstConfettiSide(logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
 }
 
 function updateConfetti(deltaMs) {
@@ -937,19 +983,24 @@ function updateConfetti(deltaMs) {
 }
 
 function cleanupEntities() {
-  state.enemies = state.enemies.filter((enemy) => enemy.x + enemy.width > -120);
-  state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > -120);
+  const logicMetrics = currentLogicMetrics();
+  const cleanupMarginX = logicMetrics.cleanupMarginX ?? 120;
+  state.enemies = state.enemies.filter((enemy) => enemy.x + enemy.width > -cleanupMarginX);
+  state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > -cleanupMarginX);
   state.collectibles = state.collectibles.filter(
-    (collectible) => !collectible.collected && collectible.x + collectible.width > -120
+    (collectible) =>
+      !collectible.collected && collectible.x + collectible.width > -cleanupMarginX
   );
-  state.warningLabels = state.warningLabels.filter((warning) => warning.x > -260);
+  state.warningLabels = state.warningLabels.filter((warning) => warning.x > -(cleanupMarginX * 2.2));
 
-  if (state.finishLine && state.finishLine.x + state.finishLine.width < -180) {
+  if (state.finishLine && state.finishLine.x + state.finishLine.width < -(cleanupMarginX * 1.5)) {
     state.finishLine = null;
   }
 }
 
 function updateRunning(deltaSeconds, deltaMs) {
+  const logicMetrics = currentLogicMetrics();
+  const groundY = currentGroundY();
   if (state.isDecelerating) {
     const nextSpeed = nextDeceleratedSpeed(state.currentSpeed);
     state.currentSpeed = nextSpeed;
@@ -965,7 +1016,7 @@ function updateRunning(deltaSeconds, deltaMs) {
 
   const scene = state.resources.images.sceneBackground;
   if (scene) {
-    const sceneScale = GROUND_Y / scene.height;
+    const sceneScale = groundY / scene.height;
     const sceneDrawWidth = scene.width * sceneScale;
     const sceneCycle = Math.max(1, sceneDrawWidth * 2);
 
@@ -974,7 +1025,8 @@ function updateRunning(deltaSeconds, deltaMs) {
       state.skyOffset %= sceneCycle;
     }
   } else {
-    state.skyOffset = (state.skyOffset + state.currentSpeed * 0.08 * deltaSeconds) % GAME_WIDTH;
+    state.skyOffset =
+      (state.skyOffset + state.currentSpeed * 0.08 * deltaSeconds) % logicMetrics.worldWidth;
   }
   state.groundOffset = (state.groundOffset + state.currentSpeed * deltaSeconds) % 120;
   state.distanceTraveled += state.currentSpeed * deltaSeconds;
