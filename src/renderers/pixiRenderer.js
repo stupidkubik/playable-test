@@ -1,5 +1,5 @@
 import { STATES } from "../gameLogic.js";
-import { ASSETS } from "../assets/extractedAssets.js";
+import { ASSETS } from "../assets/playableAssets.js";
 
 let pixiGlobalPromise = null;
 const PIXI_CDN_SRC = "https://cdn.jsdelivr.net/npm/pixi.js@8.16.0/dist/pixi.min.js";
@@ -358,15 +358,6 @@ function syncDecorLayer(
       sprite.scale.set(w / texture.width, h / texture.height);
     }
     layers.decor.addChild(sprite);
-  }
-
-  function addSpriteByHeight(texture, image, x, bottomY, targetHeight, mirrored, tileX) {
-    if (!texture || !image?.height) {
-      return;
-    }
-    const h = targetHeight;
-    const w = (image.width / image.height) * h;
-    addSprite(texture, x, bottomY - h, w, h, mirrored, tileX);
   }
 
   for (let i = 0; i < tileCount; i += 1) {
@@ -811,7 +802,6 @@ function syncTutorialHintLayer(
   sceneState,
   elapsedSeconds,
   width,
-  groundY,
   height,
   layoutState = null
 ) {
@@ -954,7 +944,6 @@ export function createPixiRenderer(options = {}) {
     const gameplayTokens = layoutState?.gameplayTokens;
     const worldWidth = Number.isFinite(cameraViewWorldRect?.width) ? cameraViewWorldRect.width : width;
     const worldHeight = Number.isFinite(cameraViewWorldRect?.height) ? cameraViewWorldRect.height : height;
-    const worldX = Number.isFinite(cameraViewWorldRect?.x) ? cameraViewWorldRect.x : 0;
     const worldY = Number.isFinite(cameraViewWorldRect?.y) ? cameraViewWorldRect.y : 0;
     const fallbackGroundY = options.groundY ?? height * 0.66;
     const runtimeGroundY = gameplayTokens?.runtimeGroundY;
@@ -963,7 +952,6 @@ export function createPixiRenderer(options = {}) {
       : fallbackGroundY;
 
     return {
-      worldX,
       worldY,
       worldWidth,
       worldHeight,
@@ -1154,7 +1142,6 @@ export function createPixiRenderer(options = {}) {
         sceneState,
         frame?.elapsedSeconds ?? 0,
         worldMetrics.worldWidth,
-        groundY,
         worldMetrics.worldHeight,
         frame?.layoutState || null
       );

@@ -9,7 +9,8 @@ const distDir = path.resolve(rootDir, "dist");
 
 const indexPath = path.resolve(rootDir, "index.html");
 const cssPath = path.resolve(rootDir, "src/style.css");
-const assetsPath = path.resolve(rootDir, "src/assets/extractedAssets.js");
+const assetsDir = path.resolve(rootDir, "src/assets");
+const assetsEntryPath = path.resolve(assetsDir, "playableAssets.js");
 const logicPath = path.resolve(rootDir, "src/gameLogic.js");
 const uiEffectsPath = path.resolve(rootDir, "src/uiEffects.js");
 const renderersDir = path.resolve(rootDir, "src/renderers");
@@ -17,23 +18,36 @@ const gamePath = path.resolve(rootDir, "src/game.js");
 const pixiPath = path.resolve(rootDir, "node_modules/pixi.js/dist/pixi.min.js");
 const outputPath = path.resolve(distDir, "playable.html");
 
+await fs.access(assetsEntryPath).catch(() => {
+  throw new Error(
+    `Не найден локальный asset bundle: ${path.relative(rootDir, assetsEntryPath)}.\n` +
+      "Ожидается, что ассеты уже локализованы в проекте (`src/assets/*`). " +
+      "Если файлы были удалены, восстановите их из git."
+  );
+});
+
 const rendererFiles = await fs
   .readdir(renderersDir)
   .then((entries) => entries.filter((entry) => entry.endsWith(".js")).sort())
   .catch(() => []);
 
 const rendererPaths = rendererFiles.map((file) => path.resolve(renderersDir, file));
+const assetModuleFiles = ["images.js", "audio.js", "frames.js", "playableAssets.js"];
+const assetModulePaths = assetModuleFiles.map((file) => path.resolve(assetsDir, file));
 
-const [indexHtml, css, assets, logic, uiEffects, pixiRuntime, ...sources] = await Promise.all([
+const [indexHtml, css, ...assetSourcesAndRest] = await Promise.all([
   fs.readFile(indexPath, "utf8"),
   fs.readFile(cssPath, "utf8"),
-  fs.readFile(assetsPath, "utf8"),
+  ...assetModulePaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(logicPath, "utf8"),
   fs.readFile(uiEffectsPath, "utf8"),
   fs.readFile(pixiPath, "utf8"),
   ...rendererPaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(gamePath, "utf8")
 ]);
+const assetsSources = assetSourcesAndRest.slice(0, assetModulePaths.length);
+const restSources = assetSourcesAndRest.slice(assetModulePaths.length);
+const [logic, uiEffects, pixiRuntime, ...sources] = restSources;
 const game = sources.pop();
 const rendererSources = sources;
 
@@ -46,8 +60,9 @@ const stripLocalImports = (source) =>
 const cleanedUiEffects = stripLocalImports(uiEffects);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
 const cleanedGame = stripLocalImports(game);
+const cleanedAssetSources = assetsSources.map(stripLocalImports);
 const escapeInlineScript = (source) => source.replace(/<\/script>/gi, "<\\/script>");
-const bundle = `${assets}\n\n${logic}\n\n${cleanedUiEffects}\n\n${cleanedRendererSources.join(
+const bundle = `${cleanedAssetSources.join("\n\n")}\n\n${logic}\n\n${cleanedUiEffects}\n\n${cleanedRendererSources.join(
   "\n\n"
 )}\n\n${cleanedGame}`.replace(/export\s+/g, "");
 const inlinedPixi = escapeInlineScript(pixiRuntime);

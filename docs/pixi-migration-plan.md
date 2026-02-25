@@ -8,7 +8,7 @@
 ## Current State
 - Runtime is vanilla JS + Canvas 2D + DOM overlays.
 - Core game loop/state lives in `/Users/evgenii/Desktop/playable/test/src/game.js`.
-- Extracted media is embedded in `/Users/evgenii/Desktop/playable/test/src/assets/extractedAssets.js`.
+- Extracted media is localized in `/Users/evgenii/Desktop/playable/test/src/assets/*` (aggregated via `/Users/evgenii/Desktop/playable/test/src/assets/playableAssets.js`).
 - Build pipeline (`/Users/evgenii/Desktop/playable/test/scripts/build-single-html.mjs`) is a manual concatenation step and currently does not bundle arbitrary extra JS modules.
 
 ## Migration Principles

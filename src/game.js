@@ -17,7 +17,7 @@ import {
   shouldSpawn,
   spawnDistanceToPx
 } from "./gameLogic.js";
-import { ASSETS } from "./assets/extractedAssets.js";
+import { ASSETS } from "./assets/playableAssets.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
 import { createUiEffects } from "./uiEffects.js";
 import { createViewportManager } from "./viewport.js";

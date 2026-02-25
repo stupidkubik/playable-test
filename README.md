@@ -19,8 +19,7 @@ npm run dev
 
 - `npm run dev` — локальный сервер разработки.
 - `npm test` — тесты базовой логики (`node --test`).
-- `npm run extract:assets` — генерация `src/assets/extractedAssets.js` из `original/file.html`.
-- `npm run build` — extraction + сборка `dist/playable.html`.
+- `npm run build` — сборка `dist/playable.html` из локальных ассетов проекта (`src/assets/*`).
 - `npm run build:pages` — сборка playable + подготовка `docs/playable/index.html` для GitHub Pages.
 
 ## Публикация на GitHub Pages (Jekyll)
@@ -46,8 +45,8 @@ npm run dev
 - `src/renderers/pixiRenderer.js` — Pixi-рендер слоёв (фон, декор, сущности, финиш, FX, tutorial hint).
 - `src/uiEffects.js` — DOM-эффекты и анимации UI (end screen, flying collectibles, countdown).
 - `src/style.css` — стили HUD/оверлеев/футера/кнопок.
-- `src/assets/extractedAssets.js` — сгенерированные data-uri ассеты + frames metadata.
-- `scripts/extract-assets.mjs` — извлечение ассетов/кадров из референсного HTML.
+- `src/assets/images.js` / `src/assets/audio.js` / `src/assets/frames.js` — локализованные модули ассетов (data-uri + frames metadata).
+- `src/assets/playableAssets.js` — агрегатор локальных модулей ассетов для runtime/build (`ASSETS`).
 - `scripts/build-single-html.mjs` — упаковка в одиночный HTML.
 - `test/gameLogic.test.js` — unit-тесты для логики.
 
@@ -231,7 +230,7 @@ DOM/UI — `src/style.css`:
 
 В исходном референсе кадры атласов trimmed (вырезаны по контенту), поэтому простой `drawImage` по фиксированному размеру даёт артефакты.
 
-В проекте `extract-assets.mjs` сохраняет метаданные исходного прямоугольника (`sourceX/sourceY/sourceW/sourceH`), а Pixi-рендер учитывает их при расчёте `drawX/drawY`. Это сохраняет стабильное положение персонажей в кадре.
+В локальных модулях ассетов сохранены метаданные исходного прямоугольника (`sourceX/sourceY/sourceW/sourceH`), а Pixi-рендер учитывает их при расчёте `drawX/drawY`. Это сохраняет стабильное положение персонажей в кадре.
 
 ## Текущий статус
 
@@ -244,6 +243,6 @@ DOM/UI — `src/style.css`:
 - HUD и footer CTA;
 - Pixi-рендер сцены и сущностей;
 - confetti и flying collectible-эффекты;
-- извлечение ассетов из референса и сборка single HTML.
+- локальные ассеты и сборка single HTML.
 
 Проект подходит как рабочий прототип для дальнейшей точной подгонки таймингов, позиций, hitbox'ов и визуала под референс.
