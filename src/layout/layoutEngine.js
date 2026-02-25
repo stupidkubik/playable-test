@@ -262,7 +262,19 @@ function buildGameplayTokens({
 }
 
 function buildCssVarMap(layoutState) {
-  const { screenRect, safeRect, worldViewportRect, cameraViewWorldRect, cameraTransform, uiTokens, zones } = layoutState;
+  const {
+    screenRect,
+    safeRect,
+    worldViewportRect,
+    cameraViewWorldRect,
+    cameraTransform,
+    uiTokens,
+    zones,
+    gameplayTokens
+  } = layoutState;
+  const tutorialTextScreenY = roundPx(cameraTransform.offsetY + gameplayTokens.tutorialTextY * cameraTransform.scale);
+  const tutorialHandScreenY = roundPx(cameraTransform.offsetY + gameplayTokens.tutorialHandY * cameraTransform.scale);
+
   return {
     "--layout-screen-x": `${screenRect.x}px`,
     "--layout-screen-y": `${screenRect.y}px`,
@@ -282,13 +294,35 @@ function buildCssVarMap(layoutState) {
     "--layout-camera-offset-x": `${cameraTransform.offsetX}px`,
     "--layout-camera-offset-y": `${cameraTransform.offsetY}px`,
     "--layout-ui-scale": `${uiTokens.uiScale}`,
+    "--layout-hud-pad-x": `${uiTokens.hudPadX}px`,
+    "--layout-hud-pad-y": `${uiTokens.hudPadY}px`,
+    "--layout-hud-gap": `${uiTokens.hudGap}px`,
+    "--layout-hud-heart-size": `${uiTokens.hudHeartSize}px`,
+    "--layout-counter-image-w": `${uiTokens.counterImageW}px`,
+    "--layout-counter-font-size": `${uiTokens.counterFontSize}px`,
     "--layout-footer-h": `${uiTokens.footerHeight}px`,
+    "--layout-footer-pad-x": `${uiTokens.footerPadX}px`,
+    "--layout-footer-pad-bottom": `${uiTokens.footerPadBottom}px`,
+    "--layout-footer-cta-font": `${uiTokens.footerCtaFont}px`,
+    "--layout-footer-cta-pad-x": `${uiTokens.footerCtaPadX}px`,
+    "--layout-footer-cta-pad-y": `${uiTokens.footerCtaPadY}px`,
     "--layout-overlay-padding": `${uiTokens.overlayPadding}px`,
     "--layout-end-modal-max-w": `${uiTokens.endModalMaxWidth}px`,
     "--layout-end-modal-max-h": `${uiTokens.endModalMaxHeight}px`,
+    "--layout-end-title-font": `${uiTokens.endTitleFont}px`,
+    "--layout-end-subtitle-font": `${uiTokens.endSubtitleFont}px`,
+    "--layout-end-cta-font": `${uiTokens.endCtaFont}px`,
+    "--layout-countdown-font": `${uiTokens.countdownFont}px`,
+    "--layout-fail-image-max": `${uiTokens.failImageMaxSize}px`,
     "--layout-footer-x": `${zones.footerRect.x}px`,
     "--layout-footer-y": `${zones.footerRect.y}px`,
-    "--layout-footer-w": `${zones.footerRect.width}px`
+    "--layout-footer-w": `${zones.footerRect.width}px`,
+    "--layout-end-modal-x": `${zones.endOverlayModalRect.x}px`,
+    "--layout-end-modal-y": `${zones.endOverlayModalRect.y}px`,
+    "--layout-end-modal-w": `${zones.endOverlayModalRect.width}px`,
+    "--layout-end-modal-h": `${zones.endOverlayModalRect.height}px`,
+    "--layout-tutorial-text-screen-y": `${tutorialTextScreenY}px`,
+    "--layout-tutorial-hand-screen-y": `${tutorialHandScreenY}px`
   };
 }
 

@@ -42,6 +42,10 @@ function applyLegacyViewportCssVars(root, nextState) {
   }
 
   const { viewportRect, gaps, scale, uiScale } = nextState;
+  const tutorialTextWorldY = nextState.layoutState?.gameplayTokens?.tutorialTextY ?? nextState.worldHeight * 0.57;
+  const tutorialHandWorldY = nextState.layoutState?.gameplayTokens?.tutorialHandY ?? nextState.worldHeight * 0.74;
+  const tutorialTextScreenY = roundPx(viewportRect.y + (tutorialTextWorldY / nextState.worldHeight) * viewportRect.height);
+  const tutorialHandScreenY = roundPx(viewportRect.y + (tutorialHandWorldY / nextState.worldHeight) * viewportRect.height);
   root.style.setProperty("--game-viewport-x", `${viewportRect.x}px`);
   root.style.setProperty("--game-viewport-y", `${viewportRect.y}px`);
   root.style.setProperty("--game-viewport-w", `${viewportRect.width}px`);
@@ -50,6 +54,10 @@ function applyLegacyViewportCssVars(root, nextState) {
   root.style.setProperty("--game-viewport-bottom-gap", `${gaps.bottom}px`);
   root.style.setProperty("--game-scale", `${scale}`);
   root.style.setProperty("--ui-scale", `${uiScale}`);
+  // Phase 2 compatibility: start overlay anchors should follow the currently rendered contain viewport
+  // until gameplay + renderer switch to layoutState camera mapping in later phases.
+  root.style.setProperty("--layout-tutorial-text-screen-y", `${tutorialTextScreenY}px`);
+  root.style.setProperty("--layout-tutorial-hand-screen-y", `${tutorialHandScreenY}px`);
 
   root.dataset.viewportOrientation = nextState.orientation;
   root.dataset.viewportAspectBucket = nextState.aspectBucket;

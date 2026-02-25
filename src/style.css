@@ -853,19 +853,20 @@ body {
 }
 
 .app-shell.app-shell--fullscreen {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--layout-safe-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--layout-safe-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--layout-safe-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--layout-safe-left, 0px));
   --game-viewport-x: 0px;
   --game-viewport-y: 0px;
   --game-viewport-w: 100vw;
   --game-viewport-h: 100vh;
   --game-viewport-bottom-gap: 0px;
-  --ui-scale: 1;
-  --hud-pad-x: clamp(8px, calc(14px * var(--ui-scale)), 16px);
-  --hud-pad-y: clamp(8px, calc(14px * var(--ui-scale)), 16px);
-  --footer-base-h: clamp(62px, calc(136px * var(--ui-scale)), 136px);
+  --runtime-ui-scale: var(--layout-ui-scale, var(--ui-scale, 1));
+  --hud-pad-x: var(--layout-hud-pad-x, clamp(8px, calc(14px * var(--runtime-ui-scale)), 16px));
+  --hud-pad-y: var(--layout-hud-pad-y, clamp(8px, calc(14px * var(--runtime-ui-scale)), 16px));
+  --footer-base-h: var(--layout-footer-h, clamp(62px, calc(136px * var(--runtime-ui-scale)), 136px));
+  --overlay-pad: var(--layout-overlay-padding, clamp(10px, calc(24px * var(--runtime-ui-scale)), 24px));
   justify-self: stretch;
   align-self: stretch;
   width: 100vw;
@@ -897,10 +898,10 @@ body {
 
 .app-shell.app-shell--fullscreen .overlay {
   padding:
-    calc(var(--safe-top) + clamp(10px, calc(24px * var(--ui-scale)), 24px))
-    calc(var(--safe-right) + clamp(10px, calc(24px * var(--ui-scale)), 24px))
-    calc(var(--safe-bottom) + clamp(10px, calc(24px * var(--ui-scale)), 24px))
-    calc(var(--safe-left) + clamp(10px, calc(24px * var(--ui-scale)), 24px));
+    calc(var(--safe-top) + var(--overlay-pad))
+    calc(var(--safe-right) + var(--overlay-pad))
+    calc(var(--safe-bottom) + var(--overlay-pad))
+    calc(var(--safe-left) + var(--overlay-pad));
 }
 
 .app-shell.app-shell--fullscreen #end-overlay {
@@ -920,39 +921,46 @@ body {
 }
 
 .app-shell.app-shell--fullscreen .hp-container {
-  gap: clamp(4px, calc(8px * var(--ui-scale)), 8px);
+  gap: var(--layout-hud-gap, clamp(4px, calc(8px * var(--runtime-ui-scale)), 8px));
 }
 
 .app-shell.app-shell--fullscreen .heart {
-  font-size: clamp(14px, calc(24px * var(--ui-scale)), 24px);
+  font-size: var(--layout-hud-heart-size, clamp(14px, calc(24px * var(--runtime-ui-scale)), 24px));
 }
 
 .app-shell.app-shell--fullscreen .paypal-counter {
-  min-width: clamp(52px, calc(84px * var(--ui-scale)), 84px);
+  min-width: clamp(52px, calc(84px * var(--runtime-ui-scale)), 84px);
 }
 
 .app-shell.app-shell--fullscreen .paypal-counter-image {
-  width: clamp(52px, calc(92px * var(--ui-scale)), 92px);
+  width: var(--layout-counter-image-w, clamp(52px, calc(92px * var(--runtime-ui-scale)), 92px));
   max-width: none;
 }
 
 .app-shell.app-shell--fullscreen .paypal-counter-amount {
-  right: clamp(3px, calc(6px * var(--ui-scale)), 6px);
-  font-size: clamp(12px, calc(22px * var(--ui-scale)), 22px);
+  right: clamp(3px, calc(6px * var(--runtime-ui-scale)), 6px);
+  font-size: var(--layout-counter-font-size, clamp(12px, calc(22px * var(--runtime-ui-scale)), 22px));
 }
 
 .app-shell.app-shell--fullscreen .intro-copy {
-  margin-top: calc(var(--game-viewport-h) * 0.56);
+  position: absolute;
+  left: 50%;
+  top: calc(var(--layout-tutorial-text-screen-y, calc(var(--game-viewport-y) + var(--game-viewport-h) * 0.56)) - var(--game-viewport-y));
+  margin-top: 0;
+  transform: translate(-50%, -50%);
+  width: min(calc(var(--game-viewport-w) - 24px), 92%);
   max-width: calc(var(--game-viewport-w) - 24px);
-  font-size: clamp(18px, calc(56px * var(--ui-scale)), 56px);
+  font-size: clamp(18px, calc(56px * var(--runtime-ui-scale)), 56px);
 }
 
 .app-shell.app-shell--fullscreen .intro-hand-wrap {
-  bottom: calc(var(--safe-bottom) + var(--footer-base-h) + clamp(14px, calc(46px * var(--ui-scale)), 46px));
+  top: calc(var(--layout-tutorial-hand-screen-y, calc(var(--game-viewport-y) + var(--game-viewport-h) * 0.74)) - var(--game-viewport-y));
+  bottom: auto;
+  transform: translate(-50%, -70%);
 }
 
 .app-shell.app-shell--fullscreen .intro-hand {
-  width: clamp(34px, calc(86px * var(--ui-scale)), 86px);
+  width: clamp(34px, calc(86px * var(--runtime-ui-scale)), 86px);
 }
 
 .app-shell.app-shell--fullscreen .game-footer {
@@ -963,86 +971,128 @@ body {
   height: calc(var(--footer-base-h) + var(--safe-bottom));
   padding:
     0
-    calc(var(--safe-right) + clamp(8px, calc(12px * var(--ui-scale)), 12px))
-    calc(var(--safe-bottom) + clamp(6px, calc(15px * var(--ui-scale)), 15px))
-    calc(var(--safe-left) + clamp(8px, calc(12px * var(--ui-scale)), 12px));
+    calc(var(--safe-right) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)))
+    calc(var(--safe-bottom) + var(--layout-footer-pad-bottom, clamp(6px, calc(15px * var(--runtime-ui-scale)), 15px)))
+    calc(var(--safe-left) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)));
   background-image: var(--footer-portrait);
   background-size: 100% 100%;
   background-position: center bottom;
 }
 
+.app-shell.app-shell--fullscreen[data-layout-footer-variant="landscape"] .game-footer {
+  background-image: var(--footer-landscape);
+}
+
 .app-shell.app-shell--fullscreen .footer-cta {
-  border-width: clamp(2px, calc(3px * var(--ui-scale)), 3px);
-  border-radius: clamp(8px, calc(14px * var(--ui-scale)), 14px);
-  font-size: clamp(10px, calc(22px * var(--ui-scale)), 22px);
+  border-width: clamp(2px, calc(3px * var(--runtime-ui-scale)), 3px);
+  border-radius: clamp(8px, calc(14px * var(--runtime-ui-scale)), 14px);
+  font-size: var(--layout-footer-cta-font, clamp(10px, calc(22px * var(--runtime-ui-scale)), 22px));
   padding:
-    clamp(6px, calc(10px * var(--ui-scale)), 10px)
-    clamp(10px, calc(18px * var(--ui-scale)), 18px);
+    var(--layout-footer-cta-pad-y, clamp(6px, calc(10px * var(--runtime-ui-scale)), 10px))
+    var(--layout-footer-cta-pad-x, clamp(10px, calc(18px * var(--runtime-ui-scale)), 18px));
 }
 
 .app-shell.app-shell--fullscreen .end-content {
-  width: min(100%, calc(var(--game-viewport-w) - 8px));
-  max-height: calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px);
-  padding: clamp(8px, calc(20px * var(--ui-scale)), 20px);
+  width: min(100%, var(--layout-end-modal-max-w, calc(var(--game-viewport-w) - 8px)));
+  max-height: min(
+    var(--layout-end-modal-max-h, calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px)),
+    calc(var(--game-viewport-h) - var(--safe-top) - var(--safe-bottom) - 4px)
+  );
+  padding: clamp(8px, var(--layout-overlay-padding, calc(20px * var(--runtime-ui-scale))), 24px);
 }
 
 .app-shell.app-shell--fullscreen .end-title {
-  font-size: clamp(18px, calc(32px * var(--ui-scale)), 32px);
-  margin-bottom: clamp(4px, calc(10px * var(--ui-scale)), 10px);
+  font-size: var(--layout-end-title-font, clamp(18px, calc(32px * var(--runtime-ui-scale)), 32px));
+  margin-bottom: clamp(4px, calc(10px * var(--runtime-ui-scale)), 10px);
 }
 
 .app-shell.app-shell--fullscreen .end-subtitle {
-  font-size: clamp(11px, calc(20px * var(--ui-scale)), 20px);
-  margin-bottom: clamp(8px, calc(30px * var(--ui-scale)), 30px);
+  font-size: var(--layout-end-subtitle-font, clamp(11px, calc(20px * var(--runtime-ui-scale)), 20px));
+  margin-bottom: clamp(8px, calc(30px * var(--runtime-ui-scale)), 30px);
 }
 
 .app-shell.app-shell--fullscreen .paypal-card-wrapper {
-  margin-bottom: clamp(8px, calc(20px * var(--ui-scale)), 20px);
+  margin-bottom: clamp(8px, calc(20px * var(--runtime-ui-scale)), 20px);
 }
 
 .app-shell.app-shell--fullscreen .lights-effect {
-  width: clamp(180px, calc(400px * var(--ui-scale)), 400px);
+  width: clamp(180px, calc(400px * var(--runtime-ui-scale)), 400px);
   max-width: calc(var(--game-viewport-w) + 24px);
 }
 
 .app-shell.app-shell--fullscreen .paypal-card-image {
-  width: clamp(140px, calc(280px * var(--ui-scale)), 280px);
+  width: clamp(140px, calc(280px * var(--runtime-ui-scale)), 280px);
   max-width: calc(var(--game-viewport-w) * 0.82);
 }
 
 .app-shell.app-shell--fullscreen .paypal-card-amount {
-  bottom: clamp(10px, calc(30px * var(--ui-scale)), 30px);
-  right: clamp(8px, calc(16px * var(--ui-scale)), 16px);
-  font-size: clamp(14px, calc(48px * var(--ui-scale)), 48px);
+  bottom: clamp(10px, calc(30px * var(--runtime-ui-scale)), 30px);
+  right: clamp(8px, calc(16px * var(--runtime-ui-scale)), 16px);
+  font-size: clamp(14px, calc(48px * var(--runtime-ui-scale)), 48px);
 }
 
 .app-shell.app-shell--fullscreen .countdown {
-  margin-bottom: clamp(8px, calc(20px * var(--ui-scale)), 20px);
+  margin-bottom: clamp(8px, calc(20px * var(--runtime-ui-scale)), 20px);
 }
 
 .app-shell.app-shell--fullscreen .countdown-time {
-  font-size: clamp(18px, calc(36px * var(--ui-scale)), 36px);
+  font-size: var(--layout-countdown-font, clamp(18px, calc(36px * var(--runtime-ui-scale)), 36px));
 }
 
 .app-shell.app-shell--fullscreen .countdown-text {
-  font-size: clamp(9px, calc(14px * var(--ui-scale)), 14px);
+  font-size: clamp(9px, calc(14px * var(--runtime-ui-scale)), 14px);
 }
 
 .app-shell.app-shell--fullscreen .cta-button {
-  border-width: clamp(2px, calc(3px * var(--ui-scale)), 3px);
-  border-radius: clamp(8px, calc(10px * var(--ui-scale)), 10px);
-  font-size: clamp(11px, calc(26px * var(--ui-scale)), 26px);
-  letter-spacing: clamp(0.3px, calc(1px * var(--ui-scale)), 1px);
+  border-width: clamp(2px, calc(3px * var(--runtime-ui-scale)), 3px);
+  border-radius: clamp(8px, calc(10px * var(--runtime-ui-scale)), 10px);
+  font-size: var(--layout-end-cta-font, clamp(11px, calc(26px * var(--runtime-ui-scale)), 26px));
+  letter-spacing: clamp(0.3px, calc(1px * var(--runtime-ui-scale)), 1px);
   padding:
-    clamp(8px, calc(16px * var(--ui-scale)), 16px)
-    clamp(16px, calc(48px * var(--ui-scale)), 48px);
+    clamp(8px, calc(16px * var(--runtime-ui-scale)), 16px)
+    clamp(16px, calc(48px * var(--runtime-ui-scale)), 48px);
 }
 
 .app-shell.app-shell--fullscreen .fail-image {
   width: min(
-    clamp(120px, calc(400px * var(--ui-scale)), 400px),
+    var(--layout-fail-image-max, clamp(120px, calc(400px * var(--runtime-ui-scale)), 400px)),
     calc(var(--game-viewport-w) * 0.75),
     calc(var(--game-viewport-h) * 0.55)
   );
   height: auto;
+}
+
+.app-shell.app-shell--fullscreen[data-layout-overlay-mode="compact-stack"] .end-content {
+  gap: clamp(6px, calc(10px * var(--runtime-ui-scale)), 10px);
+  padding: clamp(8px, calc(var(--layout-overlay-padding, 12px) * 0.8), 16px);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .game-header {
+  padding-top: calc(var(--safe-top) + max(6px, calc(var(--hud-pad-y) * 0.85)));
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .intro-copy {
+  width: min(calc(var(--game-viewport-w) - 16px), 88%);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .intro-hand-wrap {
+  transform: translate(-50%, -64%);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .end-subtitle {
+  margin-bottom: clamp(6px, calc(18px * var(--runtime-ui-scale)), 18px);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .paypal-card-wrapper {
+  margin-bottom: clamp(6px, calc(12px * var(--runtime-ui-scale)), 12px);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .countdown {
+  margin-bottom: clamp(6px, calc(12px * var(--runtime-ui-scale)), 12px);
+}
+
+.app-shell.app-shell--fullscreen[data-layout-ui-density="compact"] .cta-button {
+  padding:
+    clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)
+    clamp(16px, calc(34px * var(--runtime-ui-scale)), 34px);
 }
