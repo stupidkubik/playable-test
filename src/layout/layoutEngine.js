@@ -8,8 +8,8 @@ function roundPx(value) {
 
 // Landscape pacing/perf tuning: fixed gameplay window around the player.
 const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
-const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 700;
-const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 600;
+const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 1300;
+const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 800;
 const LANDSCAPE_SPAWN_UNIT_BY_BUCKET = Object.freeze({
   landscape_short: 1120,
   landscape_regular: 1160,
@@ -24,9 +24,9 @@ const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
   portrait_tall: 0.08,
   portrait_regular: 0.082,
   portrait_tablet: 0.088,
-  landscape_short: 0.18,
-  landscape_regular: 0.2,
-  landscape_wide: 0.22
+  landscape_short: 0.6,
+  landscape_regular: 0.8,
+  landscape_wide: 1
 });
 
 function getVisualViewport() {
