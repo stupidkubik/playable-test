@@ -449,8 +449,12 @@ export function computeFinishGateGeometry(finish, groundY, images = null) {
 }
 
 export function spawnDistanceToPx(distance, metrics = null) {
-  const worldWidth = metricOrDefault(metrics, "worldWidth", GAME_WIDTH);
-  return distance * worldWidth;
+  const spawnWidth = metricOrDefault(
+    metrics,
+    "spawnDistancePxPerUnit",
+    metricOrDefault(metrics, "worldWidth", GAME_WIDTH)
+  );
+  return distance * spawnWidth;
 }
 
 export function shouldSpawn(distancePx, traveledPx, metrics = null) {

@@ -6,6 +6,11 @@ function roundPx(value) {
   return Math.round(value * 100) / 100;
 }
 
+// Landscape pacing/perf tuning: fixed gameplay window around the player.
+const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
+const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 700;
+const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 600;
+
 function getVisualViewport() {
   return globalThis.visualViewport || null;
 }
@@ -265,6 +270,11 @@ function buildGameplayTokens({
   const runtimeGroundY = roundPx(designWorldHeight - playerGroundOffset);
   const baseVisualScale = roundPx(clamp(cameraTransform.scale, 0.6, 1.8));
   const compact = bucket.startsWith("landscape");
+  const spawnDistancePxPerUnit = compact ? LANDSCAPE_FIXED_SPAWN_UNIT_PX : roundPx(cameraViewWorldRect.width);
+  const spawnLeadViewportWidth = compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : roundPx(cameraViewWorldRect.width);
+  const cleanupMarginX = compact
+    ? LANDSCAPE_FIXED_CLEANUP_BEHIND_PX
+    : roundPx(clamp(cameraViewWorldRect.width * 0.15, 120, 360));
   const tutorialTextLiftScreenPx = 50;
   const tutorialTextLiftWorld = tutorialTextLiftScreenPx / Math.max(cameraTransform.scale || 1, 0.001);
   const tutorialTextBaseY = cameraViewWorldRect.height * (compact ? 0.52 : 0.57);
@@ -272,20 +282,23 @@ function buildGameplayTokens({
   return {
     runtimeWorldW: cameraViewWorldRect.width,
     runtimeWorldH: cameraViewWorldRect.height,
+    spawnReferenceWorldW: spawnDistancePxPerUnit,
     worldToScreenScale: cameraTransform.scale,
     runtimeGroundY,
     playerBaseX: roundPx(designWorldWidth * playerXRatio),
     playerVisualScale: compact ? roundPx(baseVisualScale * 0.96) : baseVisualScale,
     enemyVisualScale: compact ? roundPx(baseVisualScale * 0.94) : baseVisualScale,
     obstacleVisualScale: baseVisualScale,
-    cleanupMarginX: roundPx(clamp(cameraViewWorldRect.width * 0.15, 120, 360)),
+    cleanupMarginX,
+    spawnAheadFromPlayer: compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : null,
+    cleanupBehindPlayer: compact ? LANDSCAPE_FIXED_CLEANUP_BEHIND_PX : null,
     warningLabelScale: compact ? 0.9 : 1,
     tutorialTextY: roundPx(tutorialTextBaseY - tutorialTextLiftWorld),
     tutorialHandY: roundPx(cameraViewWorldRect.height * (compact ? 0.71 : 0.74)),
     gameplaySafeTop: roundPx(uiTokens.hudPadY + uiTokens.hudHeartSize + 8),
     gameplaySafeBottom: roundPx(uiTokens.footerHeight + 12),
-    spawnDistancePxPerUnit: roundPx(cameraViewWorldRect.width),
-    spawnLeadViewportWidth: roundPx(cameraViewWorldRect.width)
+    spawnDistancePxPerUnit,
+    spawnLeadViewportWidth
   };
 }
 

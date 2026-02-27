@@ -19,7 +19,7 @@ import {
   shouldSpawn,
   spawnDistanceToPx
 } from "./gameLogic.js";
-import { ASSETS } from "./assets/playableAssets.js";
+import { ASSET_FRAMES } from "./assets/frames.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
 import { createUiEffects } from "./uiEffects.js";
 import { createViewportManager } from "./viewport.js";
@@ -72,10 +72,10 @@ function firstFrameOrFallback(frames, fallback) {
 }
 
 const playerBaseFrame = firstFrameOrFallback(
-  ASSETS.frames.playerIdle,
-  firstFrameOrFallback(ASSETS.frames.playerRun, { w: 128, h: 246 })
+  ASSET_FRAMES.playerIdle,
+  firstFrameOrFallback(ASSET_FRAMES.playerRun, { w: 128, h: 246 })
 );
-const enemyBaseFrame = firstFrameOrFallback(ASSETS.frames.enemyRun, { w: 174, h: 357 });
+const enemyBaseFrame = firstFrameOrFallback(ASSET_FRAMES.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
 const enemyCollisionScale = 0.616;
@@ -124,6 +124,266 @@ const COMBO_PRAISE_RULES = [
   { streak: 10, text: "Awesome!", color: 0x79f1ff, outline: 0x103a52, fontSize: 60 },
   { streak: 14, text: "Fantastic!", color: 0xff8bf3, outline: 0x4b1548, fontSize: 62 }
 ];
+
+const IMAGE_DEFERRED_KEYS = Object.freeze([
+  "failBanner",
+  "tutorialHand",
+  "paypalCardOriginal",
+  "lightsEffectOriginal",
+  "backdropPortrait",
+  "backdropLandscape",
+  "finishFloorPattern",
+  "finishPoleLeft",
+  "finishPoleRight",
+  "finishTapeLeft",
+  "finishTapeRight",
+  "confettiParticle1",
+  "confettiParticle2",
+  "confettiParticle3",
+  "confettiParticle4",
+  "confettiParticle5",
+  "confettiParticle6"
+]);
+const IMAGE_DEFERRED_KEY_SET = new Set(IMAGE_DEFERRED_KEYS);
+const AUDIO_MUSIC_KEYS = Object.freeze(["music"]);
+const AUDIO_SFX_KEYS = Object.freeze(["jump", "hit", "collect", "hurt", "step", "lose", "win"]);
+
+function hasBundledAssetConstants() {
+  return (
+    typeof ASSET_IMAGES !== "undefined" &&
+    typeof ASSET_AUDIO !== "undefined" &&
+    typeof ASSET_FRAMES !== "undefined"
+  );
+}
+
+function pickAssetKeys(source, keys) {
+  const picked = Object.create(null);
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      picked[key] = source[key];
+    }
+  }
+  return picked;
+}
+
+function omitAssetKeys(source, excludedKeys) {
+  const result = Object.create(null);
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!excludedKeys.has(key)) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+async function loadCriticalImageAssetsData() {
+  if (hasBundledAssetConstants()) {
+    return omitAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEY_SET);
+  }
+
+  const module = await import("./assets/imagesCritical.js");
+  return module.ASSET_IMAGES_CRITICAL || {};
+}
+
+async function loadDeferredImageAssetsData() {
+  if (hasBundledAssetConstants()) {
+    return pickAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEYS);
+  }
+
+  const module = await import("./assets/imagesDeferred.js");
+  return module.ASSET_IMAGES_DEFERRED || {};
+}
+
+async function loadMusicAudioAssetsData() {
+  if (hasBundledAssetConstants()) {
+    return pickAssetKeys(ASSET_AUDIO, AUDIO_MUSIC_KEYS);
+  }
+
+  const module = await import("./assets/audioMusic.js");
+  return module.ASSET_AUDIO_MUSIC || {};
+}
+
+async function loadSfxAudioAssetsData() {
+  if (hasBundledAssetConstants()) {
+    return pickAssetKeys(ASSET_AUDIO, AUDIO_SFX_KEYS);
+  }
+
+  const module = await import("./assets/audioSfx.js");
+  return module.ASSET_AUDIO_SFX || {};
+}
+
+function readPerfDebugConfig() {
+  const search = globalThis.location?.search || "";
+  const params = new URLSearchParams(search);
+  const normalizedQuery = (params.get("debugPerf") || "").trim().toLowerCase();
+  const queryEnabled = ["1", "true", "yes", "on"].includes(normalizedQuery);
+  const globalEnabled = globalThis.__PLAYABLE_DEBUG_PERF__ === true;
+  let storageEnabled = false;
+
+  try {
+    const storageValue = globalThis.localStorage?.getItem("playable:debugPerf");
+    storageEnabled = storageValue === "1" || storageValue === "true";
+  } catch {
+    storageEnabled = false;
+  }
+
+  const enabled = queryEnabled || storageEnabled || globalEnabled;
+  const parsePositiveNumber = (name, fallback) => {
+    const raw = params.get(name);
+    const value = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+
+  return {
+    enabled,
+    slowFrameMs: parsePositiveNumber("debugPerfFrameMs", 34),
+    slowSpawnMs: parsePositiveNumber("debugPerfSpawnMs", 4),
+    minLogGapMs: parsePositiveNumber("debugPerfGapMs", 180)
+  };
+}
+
+function createPerfDebugLogger() {
+  const config = readPerfDebugConfig();
+  let currentFrame = null;
+  let lastSlowFrameLogAt = 0;
+  let suppressedSlowFrames = 0;
+
+  if (config.enabled) {
+    console.info(
+      "[perf] debug logging enabled",
+      {
+        slowFrameMs: config.slowFrameMs,
+        slowSpawnMs: config.slowSpawnMs,
+        minLogGapMs: config.minLogGapMs
+      }
+    );
+  }
+
+  function beginFrame(timestamp, deltaMs) {
+    if (!config.enabled) {
+      currentFrame = null;
+      return null;
+    }
+
+    currentFrame = {
+      timestamp,
+      deltaMs,
+      updateMs: 0,
+      renderMs: 0,
+      checkSpawnsMs: 0,
+      spawnedTypes: [],
+      counts: null
+    };
+    return currentFrame;
+  }
+
+  function addSpawn(type) {
+    if (!currentFrame) {
+      return;
+    }
+
+    currentFrame.spawnedTypes.push(type);
+  }
+
+  function setCheckSpawnsMs(ms) {
+    if (!currentFrame || !Number.isFinite(ms)) {
+      return;
+    }
+
+    currentFrame.checkSpawnsMs = ms;
+  }
+
+  function setUpdateMs(ms) {
+    if (!currentFrame || !Number.isFinite(ms)) {
+      return;
+    }
+
+    currentFrame.updateMs = ms;
+  }
+
+  function setRenderMs(ms) {
+    if (!currentFrame || !Number.isFinite(ms)) {
+      return;
+    }
+
+    currentFrame.renderMs = ms;
+  }
+
+  function setCounts(counts) {
+    if (!currentFrame) {
+      return;
+    }
+
+    currentFrame.counts = counts;
+  }
+
+  function maybeLogSpawnHotspot() {
+    if (!currentFrame) {
+      return;
+    }
+
+    if (currentFrame.checkSpawnsMs < config.slowSpawnMs) {
+      return;
+    }
+
+    console.warn("[perf] slow checkSpawns()", {
+      checkSpawnsMs: Number(currentFrame.checkSpawnsMs.toFixed(2)),
+      spawnedTypes: currentFrame.spawnedTypes,
+      counts: currentFrame.counts,
+      mode: state.mode,
+      distanceTraveled: Math.round(state.distanceTraveled)
+    });
+  }
+
+  function endFrame() {
+    if (!currentFrame) {
+      return;
+    }
+
+    maybeLogSpawnHotspot();
+
+    const workMs = currentFrame.updateMs + currentFrame.renderMs;
+    if (workMs >= config.slowFrameMs) {
+      const now = performance.now();
+      if (now - lastSlowFrameLogAt < config.minLogGapMs) {
+        suppressedSlowFrames += 1;
+      } else {
+        const summary = {
+          workMs: Number(workMs.toFixed(2)),
+          updateMs: Number(currentFrame.updateMs.toFixed(2)),
+          renderMs: Number(currentFrame.renderMs.toFixed(2)),
+          checkSpawnsMs: Number(currentFrame.checkSpawnsMs.toFixed(2)),
+          deltaMs: Number(currentFrame.deltaMs.toFixed(2)),
+          mode: state.mode,
+          decelerating: state.isDecelerating,
+          spawnedTypes: currentFrame.spawnedTypes,
+          counts: currentFrame.counts
+        };
+        if (suppressedSlowFrames > 0) {
+          summary.suppressedSlowFrames = suppressedSlowFrames;
+          suppressedSlowFrames = 0;
+        }
+        console.warn("[perf] slow frame", summary);
+        lastSlowFrameLogAt = now;
+      }
+    }
+
+    currentFrame = null;
+  }
+
+  return {
+    enabled: config.enabled,
+    beginFrame,
+    addSpawn,
+    setCheckSpawnsMs,
+    setUpdateMs,
+    setRenderMs,
+    setCounts,
+    endFrame
+  };
+}
+
+const perfDebugLogger = createPerfDebugLogger();
 
 const state = {
   mode: STATES.loading,
@@ -176,7 +436,14 @@ const state = {
   winTimeoutId: null,
   nextId: 1,
   frozenEnemyAnimationTick: null,
-  confettiParticles: []
+  confettiParticles: [],
+  audioWarmup: {
+    musicReady: false,
+    musicReadyPromise: null,
+    sfxReadyPromise: null
+  },
+  deferredAssetsPromise: null,
+  musicPlayRetryRequested: false
 };
 let activeRenderer = null;
 
@@ -205,14 +472,35 @@ function currentLogicMetrics() {
     worldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
     cameraViewWorldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
     cameraViewWorldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
+    spawnDistancePxPerUnit:
+      gameplayTokens?.spawnDistancePxPerUnit ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
     spawnLeadViewportWidth: gameplayTokens?.spawnLeadViewportWidth ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
+    spawnAheadFromPlayer: gameplayTokens?.spawnAheadFromPlayer ?? null,
+    cleanupBehindPlayer: gameplayTokens?.cleanupBehindPlayer ?? null,
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
 }
 
-function currentRuntimeWorldWidth() {
-  return currentLogicMetrics().worldWidth;
+function currentSpawnWorldX() {
+  const logicMetrics = currentLogicMetrics();
+  const explicitAhead = logicMetrics.spawnAheadFromPlayer;
+  if (Number.isFinite(explicitAhead)) {
+    return state.player.x + explicitAhead;
+  }
+
+  const spawnLeadWidth = logicMetrics.spawnLeadViewportWidth ?? logicMetrics.worldWidth;
+  return spawnLeadWidth + spawnLeadWidth * 0.5;
+}
+
+function currentCleanupMinX() {
+  const logicMetrics = currentLogicMetrics();
+  const explicitBehind = logicMetrics.cleanupBehindPlayer;
+  if (Number.isFinite(explicitBehind)) {
+    return state.player.x - explicitBehind;
+  }
+
+  return -(logicMetrics.cleanupMarginX ?? 120);
 }
 
 function currentGroundY() {
@@ -309,6 +597,63 @@ function createAudio(source, volume, loop = false) {
   return audio;
 }
 
+function createAudioMap(assetMap) {
+  return Object.fromEntries(
+    Object.entries(assetMap || {}).map(([key, value]) => [
+      key,
+      createAudio(value.url, value.volume, value.loop || false)
+    ])
+  );
+}
+
+async function loadImageElements(assetMap) {
+  const entries = Object.entries(assetMap || {});
+  if (entries.length === 0) {
+    return {};
+  }
+
+  const loaded = await Promise.all(entries.map(async ([key, dataUri]) => [key, await createImage(dataUri)]));
+  return Object.fromEntries(loaded);
+}
+
+function normalizeImageAliases() {
+  state.resources.images.paypalCard =
+    state.resources.images.paypalCardOriginal ||
+    state.resources.images.collectiblePaypalCard ||
+    null;
+  state.resources.images.paypalCardCollectible =
+    state.resources.images.paypalCardOriginal ||
+    state.resources.images.paypalCard ||
+    state.resources.images.collectiblePaypalCard ||
+    null;
+  state.resources.images.lightsEffect = state.resources.images.lightsEffectOriginal || null;
+}
+
+function applyLoadedImageBindings() {
+  if (failImage) {
+    failImage.src = state.resources.images.failBanner?.src || "";
+  }
+
+  if (hudCounterImage) {
+    hudCounterImage.src = state.resources.images.hudCounter?.src || "";
+  }
+  if (paypalCardImage) {
+    paypalCardImage.src = state.resources.images.paypalCard?.src || "";
+  }
+  if (lightsEffect) {
+    lightsEffect.src = state.resources.images.lightsEffect?.src || "";
+  }
+  if (introHand) {
+    introHand.src = state.resources.images.tutorialHand?.src || "";
+  }
+  if (gameFooter) {
+    const portrait = state.resources.images.backdropPortrait?.src || "";
+    const landscape = state.resources.images.backdropLandscape?.src || portrait;
+    gameFooter.style.setProperty("--footer-portrait", `url(${portrait})`);
+    gameFooter.style.setProperty("--footer-landscape", `url(${landscape})`);
+  }
+}
+
 function waitForAudioReady(audio, timeoutMs = 1500) {
   if (!audio) {
     return Promise.resolve();
@@ -371,52 +716,56 @@ function syncGameHeader(force = false) {
 }
 
 async function loadResources() {
-  const imageEntries = Object.entries(ASSETS.images);
-  const loaded = await Promise.all(
-    imageEntries.map(async ([key, dataUri]) => [key, await createImage(dataUri)])
-  );
+  const musicAudioDataPromise = loadMusicAudioAssetsData();
+  const criticalImagesDataPromise = loadCriticalImageAssetsData();
 
-  state.resources.images = Object.fromEntries(loaded);
+  state.audioWarmup.musicReady = false;
+  state.audioWarmup.musicReadyPromise = musicAudioDataPromise
+    .then(async (musicAudioData) => {
+      Object.assign(state.resources.audio, createAudioMap(musicAudioData));
+      const music = state.resources.audio.music;
+      state.audioWarmup.musicReady = Boolean(music && music.readyState >= 2);
+      if (music) {
+        await waitForAudioReady(music);
+        state.audioWarmup.musicReady = true;
+        if (state.musicPlayRetryRequested) {
+          state.musicPlayRetryRequested = false;
+          playMusic();
+        }
+      }
+    })
+    .catch((error) => {
+      console.warn("[assets] music preload failed", error);
+    });
 
-  state.resources.images.paypalCard =
-    state.resources.images.paypalCardOriginal ||
-    state.resources.images.collectiblePaypalCard ||
-    null;
-  state.resources.images.paypalCardCollectible =
-    state.resources.images.paypalCardOriginal ||
-    state.resources.images.paypalCard ||
-    state.resources.images.collectiblePaypalCard ||
-    null;
-  state.resources.images.lightsEffect = state.resources.images.lightsEffectOriginal || null;
+  const criticalImages = await loadImageElements(await criticalImagesDataPromise);
+  Object.assign(state.resources.images, criticalImages);
+  normalizeImageAliases();
+  applyLoadedImageBindings();
 
-  state.resources.audio = Object.fromEntries(
-    Object.entries(ASSETS.audio).map(([key, value]) => [
-      key,
-      createAudio(value.url, value.volume, value.loop || false)
-    ])
-  );
-
-  await waitForAudioReady(state.resources.audio.music);
-
-  failImage.src = state.resources.images.failBanner.src;
-
-  if (hudCounterImage) {
-    hudCounterImage.src = state.resources.images.hudCounter?.src || "";
+  if (!state.deferredAssetsPromise) {
+    state.deferredAssetsPromise = warmDeferredAssets().catch((error) => {
+      console.warn("[assets] deferred preload failed", error);
+    });
   }
-  if (paypalCardImage) {
-    paypalCardImage.src = state.resources.images.paypalCard?.src || "";
+}
+
+async function warmDeferredAssets() {
+  const [deferredImageData, sfxAudioData] = await Promise.all([
+    loadDeferredImageAssetsData(),
+    loadSfxAudioAssetsData()
+  ]);
+
+  if (Object.keys(sfxAudioData).length > 0) {
+    Object.assign(state.resources.audio, createAudioMap(sfxAudioData));
   }
-  if (lightsEffect) {
-    lightsEffect.src = state.resources.images.lightsEffect?.src || "";
-  }
-  if (introHand) {
-    introHand.src = state.resources.images.tutorialHand?.src || "";
-  }
-  if (gameFooter) {
-    const portrait = state.resources.images.backdropPortrait?.src || "";
-    const landscape = state.resources.images.backdropLandscape?.src || portrait;
-    gameFooter.style.setProperty("--footer-portrait", `url(${portrait})`);
-    gameFooter.style.setProperty("--footer-landscape", `url(${landscape})`);
+  state.audioWarmup.sfxReadyPromise = Promise.resolve();
+
+  const deferredImages = await loadImageElements(deferredImageData);
+  if (Object.keys(deferredImages).length > 0) {
+    Object.assign(state.resources.images, deferredImages);
+    normalizeImageAliases();
+    applyLoadedImageBindings();
   }
 }
 
@@ -435,6 +784,7 @@ function playSound(key) {
 function playMusic() {
   const music = state.resources.audio.music;
   if (!music) {
+    state.musicPlayRetryRequested = true;
     return;
   }
 
@@ -464,6 +814,7 @@ function playMusic() {
 }
 
 function stopMusic() {
+  state.musicPlayRetryRequested = false;
   const music = state.resources.audio.music;
   if (!music) {
     return;
@@ -682,16 +1033,16 @@ function spawnWarningLabel(x) {
 }
 
 function spawnEnemy() {
-  const runtimeWorldWidth = currentRuntimeWorldWidth();
+  const spawnX = currentSpawnWorldX();
   const scale = enemyCollisionScale;
 
   const enemy = {
     id: allocateId(),
-    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
+    x: spawnX,
     y: 0,
     width: Math.round(enemyBaseFrame.w * scale),
     height: Math.round(enemyBaseFrame.h * scale),
-    animationOffset: Math.floor(Math.random() * ASSETS.frames.enemyRun.length),
+    animationOffset: Math.floor(Math.random() * ASSET_FRAMES.enemyRun.length),
     scale,
     speed: SPEED_CONFIG.base,
     isTutorialEnemy: false
@@ -703,13 +1054,13 @@ function spawnEnemy() {
 }
 
 function spawnObstacle() {
-  const runtimeWorldWidth = currentRuntimeWorldWidth();
+  const spawnX = currentSpawnWorldX();
   const width = Math.round(obstacleBaseFrame.w * obstacleBaseScale);
   const height = Math.round(obstacleBaseFrame.h * obstacleBaseScale);
 
   const obstacle = {
     id: allocateId(),
-    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
+    x: spawnX,
     width,
     height,
     y: currentGroundY() - height,
@@ -754,14 +1105,14 @@ function collectibleRenderSize(type) {
 }
 
 function spawnCollectible(yOffset = 0) {
-  const runtimeWorldWidth = currentRuntimeWorldWidth();
+  const spawnX = currentSpawnWorldX();
   const type = Math.random() < 0.6 ? "dollar" : "paypalCard";
   const { width, height } = collectibleRenderSize(type);
   const baselineLift = yOffset > 0 ? 0 : collectibleBaseLift;
 
   const collectible = {
     id: allocateId(),
-    x: runtimeWorldWidth + runtimeWorldWidth * 0.5,
+    x: spawnX,
     width,
     height,
     y: currentGroundY() - height - yOffset - baselineLift,
@@ -775,14 +1126,13 @@ function spawnCollectible(yOffset = 0) {
 }
 
 function spawnFinishLine() {
-  const runtimeWorldWidth = currentRuntimeWorldWidth();
+  const spawnTargetX = currentSpawnWorldX();
   const groundY = currentGroundY();
-  const finishSpawnMargin = Math.round(Math.max(100, Math.min(220, runtimeWorldWidth * 0.18)));
   const previewGeometry = computeFinishGateGeometry({ x: 0, tapeBroken: false }, groundY, state.resources.images);
   const localMinX = previewGeometry?.bounds?.minX;
   const spawnAnchorX = Number.isFinite(localMinX)
-    ? runtimeWorldWidth + finishSpawnMargin - localMinX
-    : runtimeWorldWidth + runtimeWorldWidth * 0.5;
+    ? spawnTargetX - localMinX
+    : spawnTargetX;
 
   state.finishLine = {
     id: allocateId(),
@@ -798,6 +1148,8 @@ function spawnFinishLine() {
 }
 
 function spawnEntity(entry) {
+  perfDebugLogger.addSpawn(entry.type);
+
   if (entry.type === "enemy") {
     const enemy = spawnEnemy();
     if (entry.pauseForTutorial && !state.tutorialTriggered) {
@@ -810,8 +1162,7 @@ function spawnEntity(entry) {
   if (entry.type === "obstacle") {
     spawnObstacle();
     if (entry.warningLabel) {
-      const runtimeWorldWidth = currentRuntimeWorldWidth();
-      const spawnX = runtimeWorldWidth + runtimeWorldWidth * 0.5;
+      const spawnX = currentSpawnWorldX();
       spawnWarningLabel(spawnX);
     }
     return;
@@ -828,6 +1179,7 @@ function spawnEntity(entry) {
 }
 
 function checkSpawns() {
+  const perfStart = perfDebugLogger.enabled ? performance.now() : 0;
   const logicMetrics = currentLogicMetrics();
   while (state.spawnIndex < SPAWN_SEQUENCE.length) {
     const entry = SPAWN_SEQUENCE[state.spawnIndex];
@@ -839,6 +1191,10 @@ function checkSpawns() {
 
     spawnEntity(entry);
     state.spawnIndex += 1;
+  }
+
+  if (perfDebugLogger.enabled) {
+    perfDebugLogger.setCheckSpawnsMs(performance.now() - perfStart);
   }
 }
 
@@ -1113,20 +1469,24 @@ function updateConfetti(deltaMs) {
 function cleanupEntities() {
   const logicMetrics = currentLogicMetrics();
   const cleanupMarginX = logicMetrics.cleanupMarginX ?? 120;
-  state.enemies = state.enemies.filter((enemy) => enemy.x + enemy.width > -cleanupMarginX);
-  state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > -cleanupMarginX);
+  const cleanupBehind = Number.isFinite(logicMetrics.cleanupBehindPlayer)
+    ? logicMetrics.cleanupBehindPlayer
+    : cleanupMarginX;
+  const cleanupMinX = currentCleanupMinX();
+  state.enemies = state.enemies.filter((enemy) => enemy.x + enemy.width > cleanupMinX);
+  state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > cleanupMinX);
   state.collectibles = state.collectibles.filter(
     (collectible) =>
-      !collectible.collected && collectible.x + collectible.width > -cleanupMarginX
+      !collectible.collected && collectible.x + collectible.width > cleanupMinX
   );
-  state.warningLabels = state.warningLabels.filter((warning) => warning.x > -(cleanupMarginX * 2.2));
+  state.warningLabels = state.warningLabels.filter((warning) => warning.x > cleanupMinX - (cleanupBehind * 1.2));
 
   if (state.finishLine) {
     const finishGeometry = currentFinishGateGeometry(state.finishLine);
     const finishMaxX = finishGeometry?.bounds?.maxX;
     if (
-      (Number.isFinite(finishMaxX) && finishMaxX < -(cleanupMarginX * 1.5)) ||
-      (!Number.isFinite(finishMaxX) && state.finishLine.x < -(cleanupMarginX * 2))
+      (Number.isFinite(finishMaxX) && finishMaxX < cleanupMinX - (cleanupBehind * 0.5)) ||
+      (!Number.isFinite(finishMaxX) && state.finishLine.x < cleanupMinX - cleanupBehind)
     ) {
       state.finishLine = null;
     }
@@ -1246,8 +1606,38 @@ function gameLoop(timestamp) {
   const deltaSeconds = deltaMs / 1000;
   state.lastFrameTime = timestamp;
 
+  perfDebugLogger.beginFrame(timestamp, deltaMs);
+
+  const updateStart = perfDebugLogger.enabled ? performance.now() : 0;
   update(deltaSeconds, deltaMs);
+  if (perfDebugLogger.enabled) {
+    perfDebugLogger.setUpdateMs(performance.now() - updateStart);
+  }
+
+  const renderStart = perfDebugLogger.enabled ? performance.now() : 0;
   render(timestamp / 1000);
+  if (perfDebugLogger.enabled) {
+    const frameLogicMetrics = currentLogicMetrics();
+    const spawnAhead = Number.isFinite(frameLogicMetrics.spawnAheadFromPlayer)
+      ? frameLogicMetrics.spawnAheadFromPlayer
+      : frameLogicMetrics.spawnLeadViewportWidth * 1.5;
+    const cleanupBehind = Number.isFinite(frameLogicMetrics.cleanupBehindPlayer)
+      ? frameLogicMetrics.cleanupBehindPlayer
+      : (frameLogicMetrics.cleanupMarginX ?? 120);
+    perfDebugLogger.setRenderMs(performance.now() - renderStart);
+    perfDebugLogger.setCounts({
+      enemies: state.enemies.length,
+      obstacles: state.obstacles.length,
+      collectibles: state.collectibles.length,
+      warnings: state.warningLabels.length,
+      comboPopups: state.comboPopups.length,
+      hasFinishLine: Boolean(state.finishLine),
+      cameraWorldWidth: Math.round(frameLogicMetrics.worldWidth),
+      spawnLeadWidth: Math.round(frameLogicMetrics.spawnLeadViewportWidth),
+      activeTravelWindowPx: Math.round(spawnAhead + cleanupBehind)
+    });
+    perfDebugLogger.endFrame();
+  }
 
   state.rafId = requestAnimationFrame(gameLoop);
 }
@@ -1325,10 +1715,16 @@ async function boot() {
   viewportManager.start();
 
   try {
-    await ensureRenderer().init?.();
+    const renderer = ensureRenderer();
+    const rendererInitPromise = renderer.init?.();
+    const resourcesPromise = loadResources();
+    await Promise.all([rendererInitPromise, resourcesPromise]);
     const viewportState = viewportManager.getState();
-    ensureRenderer().resize?.(viewportState.layoutState || viewportState);
-    await loadResources();
+    renderer.resize?.(viewportState.layoutState || viewportState);
+    renderer.prewarm?.({
+      state,
+      layoutState: viewportState.layoutState || null
+    });
     resetWorld();
   } catch {
     showIntroOverlay("Assets failed to load. Reload and try again.");
