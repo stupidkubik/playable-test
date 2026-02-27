@@ -21,7 +21,7 @@ export const SPEED_CONFIG = Object.freeze({
 
 export const HITBOX_CONFIG = Object.freeze({
   playerScaleX: 0.25,
-  playerScaleY: 0.7,
+  playerScaleY: 0.78,
   playerOffsetX: 0,
   playerOffsetY: -0.15,
   enemyScaleX: 0.3,

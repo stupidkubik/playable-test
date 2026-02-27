@@ -8,6 +8,7 @@ import {
   intersects,
   nextSpawnDelay,
   obstacleSpeed,
+  playerHitbox,
   scoreStep,
   shouldSpawn,
   spawnDistanceToPx
@@ -65,6 +66,14 @@ test("collectibleIntersects accepts custom collectible radius", () => {
 
   assert.equal(collectibleIntersects(playerBox, collectible), true);
   assert.equal(collectibleIntersects(playerBox, collectible, { collectibleRadius: 20 }), false);
+});
+
+test("player hitbox collects airborne collectible above head", () => {
+  const player = { x: 100, y: 500, width: 120, height: 200 };
+  const playerBox = playerHitbox(player);
+  const collectible = { x: 150, y: 450, width: 20, height: 20 };
+
+  assert.equal(collectibleIntersects(playerBox, collectible), true);
 });
 
 test("computeFinishGateGeometry returns stable trigger line and bounds", () => {
