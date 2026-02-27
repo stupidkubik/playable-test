@@ -10,6 +10,14 @@ function roundPx(value) {
 const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
 const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 700;
 const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 600;
+const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
+  portrait_tall: 0.08,
+  portrait_regular: 0.082,
+  portrait_tablet: 0.088,
+  landscape_short: 0.18,
+  landscape_regular: 0.2,
+  landscape_wide: 0.22
+});
 
 function getVisualViewport() {
   return globalThis.visualViewport || null;
@@ -64,6 +72,15 @@ function overlayModeForBucket(bucket) {
 
 function footerVariantForBucket(bucket) {
   return bucket.startsWith("landscape") ? "landscape" : "portrait";
+}
+
+function playerXRatioForBucket(bucket, fallbackRatio) {
+  const value = PLAYER_X_RATIO_BY_BUCKET[bucket];
+  if (Number.isFinite(value)) {
+    return value;
+  }
+
+  return fallbackRatio;
 }
 
 function safeInsetsFromViewport(rootRect) {
@@ -281,6 +298,7 @@ function buildGameplayTokens({
   const tutorialTextLiftScreenPx = 50;
   const tutorialTextLiftWorld = tutorialTextLiftScreenPx / Math.max(cameraTransform.scale || 1, 0.001);
   const tutorialTextBaseY = cameraViewWorldRect.height * (compact ? 0.52 : 0.57);
+  const playerBaseRatio = playerXRatioForBucket(bucket, playerXRatio);
 
   return {
     runtimeWorldW: cameraViewWorldRect.width,
@@ -288,7 +306,7 @@ function buildGameplayTokens({
     spawnReferenceWorldW: spawnDistancePxPerUnit,
     worldToScreenScale: cameraTransform.scale,
     runtimeGroundY,
-    playerBaseX: roundPx(designWorldWidth * playerXRatio),
+    playerBaseX: roundPx(designWorldWidth * playerBaseRatio),
     playerVisualScale: compact ? roundPx(baseVisualScale * 0.96) : baseVisualScale,
     enemyVisualScale: compact ? roundPx(baseVisualScale * 0.94) : baseVisualScale,
     obstacleVisualScale: baseVisualScale,
