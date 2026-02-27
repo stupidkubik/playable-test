@@ -460,6 +460,7 @@ let activeRenderer = null;
 viewportManager.subscribe(
   (viewportState) => {
     activeRenderer?.resize?.(viewportState.layoutState || viewportState);
+    syncPlayerBaseXForLayoutChange(viewportState.layoutState || null);
     syncSpawnMetricsForLayoutChange(viewportState.layoutState || null);
   },
   { immediate: false }
@@ -491,6 +492,21 @@ function currentLogicMetrics() {
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
+}
+
+function syncPlayerBaseXForLayoutChange(layoutState) {
+  const fallbackX = Math.round(GAME_WIDTH * PLAYER_CONFIG.xPosition);
+  const nextPlayerBaseX = Number.isFinite(layoutState?.gameplayTokens?.playerBaseX)
+    ? layoutState.gameplayTokens.playerBaseX
+    : fallbackX;
+
+  if (!Number.isFinite(nextPlayerBaseX)) {
+    return;
+  }
+
+  if (!Number.isFinite(state.player?.x) || Math.abs(state.player.x - nextPlayerBaseX) >= 0.5) {
+    state.player.x = nextPlayerBaseX;
+  }
 }
 
 function currentSpawnUnitWidth() {
