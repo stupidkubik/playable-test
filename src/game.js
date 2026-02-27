@@ -476,6 +476,8 @@ const state = {
   nextId: 1,
   frozenEnemyAnimationTick: null,
   confettiParticles: [],
+  objectUrlPool: [],
+  dataUriObjectUrlCache: new Map(),
   audioWarmup: {
     musicReady: false,
     musicReadyPromise: null,
@@ -669,17 +671,97 @@ const uiEffects = createUiEffects({
   }
 });
 
-function createImage(dataUri) {
+function createImageFromSource(source) {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    image.decoding = "async";
     image.onload = () => resolve(image);
     image.onerror = reject;
-    image.src = dataUri;
+    image.src = source;
   });
 }
 
+function dataUriToObjectUrl(dataUri) {
+  if (typeof dataUri !== "string" || !dataUri.startsWith("data:")) {
+    return null;
+  }
+
+  const cached = state.dataUriObjectUrlCache.get(dataUri);
+  if (cached) {
+    return cached;
+  }
+
+  const commaIndex = dataUri.indexOf(",");
+  if (commaIndex < 0) {
+    return null;
+  }
+
+  const meta = dataUri.slice(5, commaIndex);
+  const payload = dataUri.slice(commaIndex + 1);
+  const mime = meta.split(";")[0] || "application/octet-stream";
+  const isBase64 = /;base64/i.test(meta);
+
+  let bytes = null;
+  if (isBase64) {
+    const binary = atob(payload);
+    const length = binary.length;
+    const array = new Uint8Array(length);
+    for (let i = 0; i < length; i += 1) {
+      array[i] = binary.charCodeAt(i);
+    }
+    bytes = array;
+  } else {
+    const text = decodeURIComponent(payload);
+    bytes = new TextEncoder().encode(text);
+  }
+
+  const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  state.dataUriObjectUrlCache.set(dataUri, objectUrl);
+  state.objectUrlPool.push(objectUrl);
+  return objectUrl;
+}
+
+function normalizeAssetSource(source) {
+  if (typeof source !== "string") {
+    return source;
+  }
+
+  if (!source.startsWith("data:")) {
+    return source;
+  }
+
+  // Local file:// mode can be unstable with very long data-URIs in some browsers.
+  // Blob URLs are more reliable and are also reused from cache.
+  const maybeObjectUrl = dataUriToObjectUrl(source);
+  return maybeObjectUrl || source;
+}
+
+async function createImage(source) {
+  const normalizedSource = normalizeAssetSource(source);
+
+  try {
+    return await createImageFromSource(normalizedSource);
+  } catch (firstError) {
+    if (typeof normalizedSource === "string" && normalizedSource.startsWith("data:")) {
+      try {
+        const response = await fetch(normalizedSource);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const image = await createImageFromSource(objectUrl);
+        state.objectUrlPool.push(objectUrl);
+        return image;
+      } catch {
+        throw firstError;
+      }
+    }
+
+    throw firstError;
+  }
+}
+
 function createAudio(source, volume, loop = false) {
-  const audio = new Audio(source);
+  const normalizedSource = normalizeAssetSource(source);
+  const audio = new Audio(normalizedSource);
   audio.preload = "auto";
   audio.volume = volume;
   audio.loop = loop;
@@ -701,7 +783,47 @@ async function loadImageElements(assetMap) {
     return {};
   }
 
-  const loaded = await Promise.all(entries.map(async ([key, dataUri]) => [key, await createImage(dataUri)]));
+  const settled = await Promise.all(
+    entries.map(async ([key, source]) => {
+      try {
+        return {
+          ok: true,
+          key,
+          image: await createImage(source)
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          key,
+          error
+        };
+      }
+    })
+  );
+  const loaded = [];
+  const failed = [];
+
+  for (const item of settled) {
+    if (item.ok) {
+      loaded.push([item.key, item.image]);
+      continue;
+    }
+
+    failed.push(item);
+  }
+
+  if (failed.length > 0) {
+    console.warn("[assets] failed image loads", {
+      failedCount: failed.length,
+      loadedCount: loaded.length,
+      keys: failed.map((item) => item.key)
+    });
+  }
+
+  if (loaded.length === 0) {
+    throw new Error("No image assets were loaded.");
+  }
+
   return Object.fromEntries(loaded);
 }
 
@@ -1903,4 +2025,9 @@ window.addEventListener("beforeunload", () => {
   }
   clearScheduledConfettiBurst();
   uiEffects.clearEndTimers();
+  for (const objectUrl of state.objectUrlPool) {
+    URL.revokeObjectURL(objectUrl);
+  }
+  state.objectUrlPool.length = 0;
+  state.dataUriObjectUrlCache.clear();
 });

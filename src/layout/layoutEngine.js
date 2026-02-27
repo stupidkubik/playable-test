@@ -1,8 +1,8 @@
-function clamp(value, min, max) {
+function layoutClamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function roundPx(value) {
+function layoutRoundPx(value) {
   return Math.round(value * 100) / 100;
 }
 
@@ -99,7 +99,7 @@ function spawnDistanceUnitForBucket(bucket, cameraWorldWidth) {
   }
 
   const multiplier = PORTRAIT_SPAWN_UNIT_MULTIPLIER_BY_BUCKET[bucket] ?? 1;
-  return roundPx(clamp(cameraWorldWidth * multiplier, 680, 980));
+  return layoutRoundPx(layoutClamp(cameraWorldWidth * multiplier, 680, 980));
 }
 
 function safeInsetsFromViewport(rootRect) {
@@ -109,15 +109,15 @@ function safeInsetsFromViewport(rootRect) {
   }
 
   // Best-effort fallback. CSS env(safe-area-inset-*) remains the primary source.
-  const left = clamp(roundPx(vv.offsetLeft || 0), 0, rootRect.width);
-  const top = clamp(roundPx(vv.offsetTop || 0), 0, rootRect.height);
-  const right = clamp(
-    roundPx(Math.max(0, (globalThis.innerWidth || rootRect.width) - (vv.offsetLeft + vv.width))),
+  const left = layoutClamp(layoutRoundPx(vv.offsetLeft || 0), 0, rootRect.width);
+  const top = layoutClamp(layoutRoundPx(vv.offsetTop || 0), 0, rootRect.height);
+  const right = layoutClamp(
+    layoutRoundPx(Math.max(0, (globalThis.innerWidth || rootRect.width) - (vv.offsetLeft + vv.width))),
     0,
     rootRect.width
   );
-  const bottom = clamp(
-    roundPx(Math.max(0, (globalThis.innerHeight || rootRect.height) - (vv.offsetTop + vv.height))),
+  const bottom = layoutClamp(
+    layoutRoundPx(Math.max(0, (globalThis.innerHeight || rootRect.height) - (vv.offsetTop + vv.height))),
     0,
     rootRect.height
   );
@@ -151,7 +151,7 @@ function buildCameraViewWorldRect({
 }) {
   const cameraAspect = cameraAspectCapForBucket(bucket, screenAspect, wideCameraAspectCap);
   const height = designWorldHeight;
-  const width = roundPx(height * cameraAspect);
+  const width = layoutRoundPx(height * cameraAspect);
 
   // Endless runner composition: keep left edge anchored, reveal more space to the right.
   return {
@@ -167,17 +167,17 @@ function buildCameraTransform({
   worldViewportRect,
   cameraViewWorldRect
 }) {
-  const scale = roundPx(worldViewportRect.height / cameraViewWorldRect.height);
-  const contentWidth = roundPx(cameraViewWorldRect.width * scale);
-  const offsetX = roundPx(worldViewportRect.x + (worldViewportRect.width - contentWidth) * 0.5);
-  const offsetY = roundPx(worldViewportRect.y);
+  const scale = layoutRoundPx(worldViewportRect.height / cameraViewWorldRect.height);
+  const contentWidth = layoutRoundPx(cameraViewWorldRect.width * scale);
+  const offsetX = layoutRoundPx(worldViewportRect.x + (worldViewportRect.width - contentWidth) * 0.5);
+  const offsetY = layoutRoundPx(worldViewportRect.y);
 
   return {
     scale,
     offsetX,
     offsetY,
     contentScreenWidth: contentWidth,
-    contentScreenHeight: roundPx(cameraViewWorldRect.height * scale),
+    contentScreenHeight: layoutRoundPx(cameraViewWorldRect.height * scale),
     viewportScreenWidth: screenRect.width,
     viewportScreenHeight: screenRect.height
   };
@@ -194,62 +194,62 @@ function buildUiTokens({
   overlayMode,
   uiDensity
 }) {
-  const refScale = clamp(Math.min(safeRect.width / 720, safeRect.height / 1280), 0.62, 1.35);
+  const refScale = layoutClamp(Math.min(safeRect.width / 720, safeRect.height / 1280), 0.62, 1.35);
   const densityScale = clampByDensity(refScale, uiDensity, 0.9);
   const isLandscape = bucket.startsWith("landscape");
   const landscapeFooterHeightRatio =
     bucket === "landscape_short" ? 0.2 : bucket === "landscape_regular" ? 0.19 : 0.18;
-  const portraitNarrowWidthProgress = isLandscape ? 0 : clamp((500 - safeRect.width) / 180, 0, 1);
+  const portraitNarrowWidthProgress = isLandscape ? 0 : layoutClamp((500 - safeRect.width) / 180, 0, 1);
   const portraitFooterHeightFactor = 1 - portraitNarrowWidthProgress * 0.14;
-  const footerHeight = roundPx(
-    clamp(
+  const footerHeight = layoutRoundPx(
+    layoutClamp(
       isLandscape ? safeRect.height * landscapeFooterHeightRatio : safeRect.height * 0.12 * portraitFooterHeightFactor,
       isLandscape ? 72 : 60,
       isLandscape ? 170 : 156
     )
   );
-  const landscapeFooterCtaBoost = isLandscape ? clamp(safeRect.width / 860, 1.06, 1.3) : 1;
-  const footerCtaFont = roundPx(
-    clamp(
+  const landscapeFooterCtaBoost = isLandscape ? layoutClamp(safeRect.width / 860, 1.06, 1.3) : 1;
+  const footerCtaFont = layoutRoundPx(
+    layoutClamp(
       22 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.14 : 1),
       isLandscape ? 14 : 10,
       isLandscape ? 28 : 22
     )
   );
-  const footerCtaPadX = roundPx(
-    clamp(18 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.12 : 1), isLandscape ? 14 : 10, isLandscape ? 28 : 22)
+  const footerCtaPadX = layoutRoundPx(
+    layoutClamp(18 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.12 : 1), isLandscape ? 14 : 10, isLandscape ? 28 : 22)
   );
-  const footerCtaPadY = roundPx(
-    clamp(10 * densityScale * (isLandscape ? 1.15 : 1), isLandscape ? 8 : 6, isLandscape ? 14 : 12)
+  const footerCtaPadY = layoutRoundPx(
+    layoutClamp(10 * densityScale * (isLandscape ? 1.15 : 1), isLandscape ? 8 : 6, isLandscape ? 14 : 12)
   );
-  const footerCtaMinWidth = roundPx(
-    clamp(isLandscape ? safeRect.width * 0.155 : 0, isLandscape ? 140 : 0, isLandscape ? 238 : 0)
+  const footerCtaMinWidth = layoutRoundPx(
+    layoutClamp(isLandscape ? safeRect.width * 0.155 : 0, isLandscape ? 140 : 0, isLandscape ? 238 : 0)
   );
-  const overlayPadding = roundPx(clamp(18 * densityScale, 10, 28));
-  const endModalMaxWidth = roundPx(
-    clamp(isLandscape ? safeRect.width * 0.68 : safeRect.width * 0.88, 300, isLandscape ? 620 : 520)
+  const overlayPadding = layoutRoundPx(layoutClamp(18 * densityScale, 10, 28));
+  const endModalMaxWidth = layoutRoundPx(
+    layoutClamp(isLandscape ? safeRect.width * 0.68 : safeRect.width * 0.88, 300, isLandscape ? 620 : 520)
   );
-  const endModalMaxHeight = roundPx(clamp(safeRect.height * 0.82, 240, safeRect.height - 8));
+  const endModalMaxHeight = layoutRoundPx(layoutClamp(safeRect.height * 0.82, 240, safeRect.height - 8));
 
   return {
-    uiScale: roundPx(densityScale),
+    uiScale: layoutRoundPx(densityScale),
     uiDensity,
     footerVariant,
     overlayMode,
-    hudPadX: roundPx(clamp(14 * densityScale, 8, 20)),
-    hudPadY: roundPx(clamp(14 * densityScale, 8, 20)),
-    hudGap: roundPx(clamp(8 * densityScale, 4, 10)),
-    hudHeartSize: roundPx(clamp(50 * densityScale, 16, 32)),
-    counterImageW: roundPx(
-      clamp(236 * densityScale * (isLandscape ? 1.12 : 1), isLandscape ? 72 : 64, isLandscape ? 156 : 132)
+    hudPadX: layoutRoundPx(layoutClamp(14 * densityScale, 8, 20)),
+    hudPadY: layoutRoundPx(layoutClamp(14 * densityScale, 8, 20)),
+    hudGap: layoutRoundPx(layoutClamp(8 * densityScale, 4, 10)),
+    hudHeartSize: layoutRoundPx(layoutClamp(50 * densityScale, 16, 32)),
+    counterImageW: layoutRoundPx(
+      layoutClamp(236 * densityScale * (isLandscape ? 1.12 : 1), isLandscape ? 72 : 64, isLandscape ? 156 : 132)
     ),
-    counterFontSize: roundPx(clamp(44 * densityScale * (isLandscape ? 1.02 : 1), 12, isLandscape ? 24 : 26)),
-    counterAmountPadRight: roundPx(
-      clamp(12 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 8 : 6, isLandscape ? 16 : 12)
+    counterFontSize: layoutRoundPx(layoutClamp(44 * densityScale * (isLandscape ? 1.02 : 1), 12, isLandscape ? 24 : 26)),
+    counterAmountPadRight: layoutRoundPx(
+      layoutClamp(12 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 8 : 6, isLandscape ? 16 : 12)
     ),
     footerHeight,
-    footerPadX: roundPx(clamp(12 * densityScale, 8, 14)),
-    footerPadBottom: roundPx(clamp(14 * densityScale, 6, 18)),
+    footerPadX: layoutRoundPx(layoutClamp(12 * densityScale, 8, 14)),
+    footerPadBottom: layoutRoundPx(layoutClamp(14 * densityScale, 6, 18)),
     footerCtaFont,
     footerCtaPadX,
     footerCtaPadY,
@@ -257,11 +257,11 @@ function buildUiTokens({
     overlayPadding,
     endModalMaxWidth,
     endModalMaxHeight,
-    endTitleFont: roundPx(clamp(32 * densityScale, 18, 34)),
-    endSubtitleFont: roundPx(clamp(20 * densityScale, 11, 22)),
-    endCtaFont: roundPx(clamp(26 * densityScale, 12, 28)),
-    countdownFont: roundPx(clamp(36 * densityScale, 18, 40)),
-    failImageMaxSize: roundPx(clamp(Math.min(safeRect.width, safeRect.height) * 0.55, 120, 420))
+    endTitleFont: layoutRoundPx(layoutClamp(32 * densityScale, 18, 34)),
+    endSubtitleFont: layoutRoundPx(layoutClamp(20 * densityScale, 11, 22)),
+    endCtaFont: layoutRoundPx(layoutClamp(26 * densityScale, 12, 28)),
+    countdownFont: layoutRoundPx(layoutClamp(36 * densityScale, 18, 40)),
+    failImageMaxSize: layoutRoundPx(layoutClamp(Math.min(safeRect.width, safeRect.height) * 0.55, 120, 420))
   };
 }
 
@@ -272,7 +272,7 @@ function buildZones({ safeRect, uiTokens }) {
     width: safeRect.width,
     height: uiTokens.footerHeight
   };
-  const hudHeight = roundPx(clamp(uiTokens.hudHeartSize * 2.2, 36, 72));
+  const hudHeight = layoutRoundPx(layoutClamp(uiTokens.hudHeartSize * 2.2, 36, 72));
   const hudRect = {
     x: safeRect.x,
     y: safeRect.y,
@@ -286,8 +286,8 @@ function buildZones({ safeRect, uiTokens }) {
     height: safeRect.height
   };
   const endOverlayModalRect = {
-    x: roundPx(safeRect.x + (safeRect.width - uiTokens.endModalMaxWidth) * 0.5),
-    y: roundPx(safeRect.y + (safeRect.height - uiTokens.endModalMaxHeight) * 0.5),
+    x: layoutRoundPx(safeRect.x + (safeRect.width - uiTokens.endModalMaxWidth) * 0.5),
+    y: layoutRoundPx(safeRect.y + (safeRect.height - uiTokens.endModalMaxHeight) * 0.5),
     width: uiTokens.endModalMaxWidth,
     height: uiTokens.endModalMaxHeight
   };
@@ -310,14 +310,14 @@ function buildGameplayTokens({
   playerGroundOffset,
   playerXRatio
 }) {
-  const runtimeGroundY = roundPx(designWorldHeight - playerGroundOffset);
-  const baseVisualScale = roundPx(clamp(cameraTransform.scale, 0.6, 1.8));
+  const runtimeGroundY = layoutRoundPx(designWorldHeight - playerGroundOffset);
+  const baseVisualScale = layoutRoundPx(layoutClamp(cameraTransform.scale, 0.6, 1.8));
   const compact = bucket.startsWith("landscape");
   const spawnDistancePxPerUnit = spawnDistanceUnitForBucket(bucket, cameraViewWorldRect.width);
-  const spawnLeadViewportWidth = compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : roundPx(cameraViewWorldRect.width);
+  const spawnLeadViewportWidth = compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : layoutRoundPx(cameraViewWorldRect.width);
   const cleanupMarginX = compact
     ? LANDSCAPE_FIXED_CLEANUP_BEHIND_PX
-    : roundPx(clamp(cameraViewWorldRect.width * 0.15, 120, 360));
+    : layoutRoundPx(layoutClamp(cameraViewWorldRect.width * 0.15, 120, 360));
   const tutorialTextLiftScreenPx = 50;
   const tutorialTextLiftWorld = tutorialTextLiftScreenPx / Math.max(cameraTransform.scale || 1, 0.001);
   const tutorialTextBaseY = cameraViewWorldRect.height * (compact ? 0.52 : 0.57);
@@ -329,18 +329,18 @@ function buildGameplayTokens({
     spawnReferenceWorldW: spawnDistancePxPerUnit,
     worldToScreenScale: cameraTransform.scale,
     runtimeGroundY,
-    playerBaseX: roundPx(designWorldWidth * playerBaseRatio),
-    playerVisualScale: compact ? roundPx(baseVisualScale * 0.96) : baseVisualScale,
-    enemyVisualScale: compact ? roundPx(baseVisualScale * 0.94) : baseVisualScale,
+    playerBaseX: layoutRoundPx(designWorldWidth * playerBaseRatio),
+    playerVisualScale: compact ? layoutRoundPx(baseVisualScale * 0.96) : baseVisualScale,
+    enemyVisualScale: compact ? layoutRoundPx(baseVisualScale * 0.94) : baseVisualScale,
     obstacleVisualScale: baseVisualScale,
     cleanupMarginX,
     spawnAheadFromPlayer: compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : null,
     cleanupBehindPlayer: compact ? LANDSCAPE_FIXED_CLEANUP_BEHIND_PX : null,
     warningLabelScale: compact ? 0.9 : 1,
-    tutorialTextY: roundPx(tutorialTextBaseY - tutorialTextLiftWorld),
-    tutorialHandY: roundPx(cameraViewWorldRect.height * (compact ? 0.71 : 0.74)),
-    gameplaySafeTop: roundPx(uiTokens.hudPadY + uiTokens.hudHeartSize + 8),
-    gameplaySafeBottom: roundPx(uiTokens.footerHeight + 12),
+    tutorialTextY: layoutRoundPx(tutorialTextBaseY - tutorialTextLiftWorld),
+    tutorialHandY: layoutRoundPx(cameraViewWorldRect.height * (compact ? 0.71 : 0.74)),
+    gameplaySafeTop: layoutRoundPx(uiTokens.hudPadY + uiTokens.hudHeartSize + 8),
+    gameplaySafeBottom: layoutRoundPx(uiTokens.footerHeight + 12),
     spawnDistancePxPerUnit,
     spawnLeadViewportWidth
   };
@@ -357,8 +357,8 @@ function buildCssVarMap(layoutState) {
     zones,
     gameplayTokens
   } = layoutState;
-  const tutorialTextScreenY = roundPx(cameraTransform.offsetY + gameplayTokens.tutorialTextY * cameraTransform.scale);
-  const tutorialHandScreenY = roundPx(cameraTransform.offsetY + gameplayTokens.tutorialHandY * cameraTransform.scale);
+  const tutorialTextScreenY = layoutRoundPx(cameraTransform.offsetY + gameplayTokens.tutorialTextY * cameraTransform.scale);
+  const tutorialHandScreenY = layoutRoundPx(cameraTransform.offsetY + gameplayTokens.tutorialHandY * cameraTransform.scale);
 
   return {
     "--layout-screen-x": `${screenRect.x}px`,
@@ -455,10 +455,10 @@ export function createLayoutEngine(options = {}) {
   function buildState() {
     const rootRect = readRootRect(root, designWorldWidth, designWorldHeight);
     const screenRect = {
-      x: roundPx(rootRect.left || 0),
-      y: roundPx(rootRect.top || 0),
-      width: Math.max(1, roundPx(rootRect.width || designWorldWidth)),
-      height: Math.max(1, roundPx(rootRect.height || designWorldHeight))
+      x: layoutRoundPx(rootRect.left || 0),
+      y: layoutRoundPx(rootRect.top || 0),
+      width: Math.max(1, layoutRoundPx(rootRect.width || designWorldWidth)),
+      height: Math.max(1, layoutRoundPx(rootRect.height || designWorldHeight))
     };
 
     const safeInsets = safeInsetsFromViewport(rootRect);
@@ -511,7 +511,7 @@ export function createLayoutEngine(options = {}) {
         width: designWorldWidth,
         height: designWorldHeight
       },
-      pixelRatio: clamp(globalThis.devicePixelRatio || 1, 1, maxPixelRatio),
+      pixelRatio: layoutClamp(globalThis.devicePixelRatio || 1, 1, maxPixelRatio),
       screenRect,
       safeRect,
       bucket,

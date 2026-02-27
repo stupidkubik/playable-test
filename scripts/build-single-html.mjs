@@ -12,6 +12,8 @@ const cssPath = path.resolve(rootDir, "src/style.css");
 const assetsDir = path.resolve(rootDir, "src/assets");
 const assetsEntryPath = path.resolve(assetsDir, "playableAssets.js");
 const logicPath = path.resolve(rootDir, "src/gameLogic.js");
+const layoutEnginePath = path.resolve(rootDir, "src/layout/layoutEngine.js");
+const viewportPath = path.resolve(rootDir, "src/viewport.js");
 const uiEffectsPath = path.resolve(rootDir, "src/uiEffects.js");
 const renderersDir = path.resolve(rootDir, "src/renderers");
 const gamePath = path.resolve(rootDir, "src/game.js");
@@ -156,12 +158,14 @@ const [indexHtml, css, ...restSources] = await Promise.all([
   fs.readFile(indexPath, "utf8"),
   fs.readFile(cssPath, "utf8"),
   fs.readFile(logicPath, "utf8"),
+  fs.readFile(layoutEnginePath, "utf8"),
+  fs.readFile(viewportPath, "utf8"),
   fs.readFile(uiEffectsPath, "utf8"),
   fs.readFile(pixiPath, "utf8"),
   ...rendererPaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(gamePath, "utf8")
 ]);
-const [logic, uiEffects, pixiRuntime, ...sources] = restSources;
+const [logic, layoutEngine, viewport, uiEffects, pixiRuntime, ...sources] = restSources;
 const game = sources.pop();
 const rendererSources = sources;
 
@@ -170,8 +174,13 @@ const stripLocalImports = (source) =>
     // Remove relative imports, including multiline named imports.
     .replace(/^\s*import[\s\S]*?\sfrom\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
     // Remove side-effect relative imports (rare, but safe to support).
-    .replace(/^\s*import\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
+    .replace(/^\s*import\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
+    // Remove relative re-export lines to avoid dangling `from "./..."` after export stripping.
+    .replace(/^\s*export\s+\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
+    .replace(/^\s*export\s+\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
 const cleanedUiEffects = stripLocalImports(uiEffects);
+const cleanedLayoutEngine = stripLocalImports(layoutEngine);
+const cleanedViewport = stripLocalImports(viewport);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
 const cleanedGame = stripLocalImports(game);
 const assetModulesSource = serializeAssetModulesSource({
@@ -183,11 +192,17 @@ const escapeInlineScript = (source) => source.replace(/<\/script>/gi, "<\\/scrip
 const bundleParts = [
   compactJsSourceLite(assetModulesSource),
   compactJsSourceLite(logic),
+  compactJsSourceLite(cleanedLayoutEngine),
+  compactJsSourceLite(cleanedViewport),
   compactJsSourceLite(cleanedUiEffects),
   ...cleanedRendererSources.map(compactJsSourceLite),
   compactJsSourceLite(cleanedGame)
 ];
-const bundle = bundleParts.join("\n").replace(/export\s+/g, "");
+const bundle = bundleParts
+  .join("\n")
+  .replace(/export\s+/g, "")
+  .replace(/^\s*\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
+  .replace(/^\s*\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
 const inlinedPixi = escapeInlineScript(pixiRuntime);
 const inlinedBundle = escapeInlineScript(bundle);
 

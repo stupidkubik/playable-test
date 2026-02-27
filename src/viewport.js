@@ -1,15 +1,15 @@
 import { createLayoutEngine } from "./layout/layoutEngine.js";
 
-function roundPx(value) {
+function viewportRoundPx(value) {
   return Math.round(value * 100) / 100;
 }
 
 function buildLayoutViewport(layoutState) {
   const viewportRect = {
-    x: roundPx(layoutState?.worldViewportRect?.x ?? 0),
-    y: roundPx(layoutState?.worldViewportRect?.y ?? 0),
-    width: roundPx(layoutState?.worldViewportRect?.width ?? layoutState?.screenRect?.width ?? 0),
-    height: roundPx(layoutState?.worldViewportRect?.height ?? layoutState?.screenRect?.height ?? 0)
+    x: viewportRoundPx(layoutState?.worldViewportRect?.x ?? 0),
+    y: viewportRoundPx(layoutState?.worldViewportRect?.y ?? 0),
+    width: viewportRoundPx(layoutState?.worldViewportRect?.width ?? layoutState?.screenRect?.width ?? 0),
+    height: viewportRoundPx(layoutState?.worldViewportRect?.height ?? layoutState?.screenRect?.height ?? 0)
   };
 
   return {
@@ -17,21 +17,21 @@ function buildLayoutViewport(layoutState) {
     uiScale: layoutState?.uiTokens?.uiScale ?? 1,
     viewportRect,
     viewportPageRect: {
-      left: roundPx((layoutState?.screenRect?.x ?? 0) + viewportRect.x),
-      top: roundPx((layoutState?.screenRect?.y ?? 0) + viewportRect.y),
+      left: viewportRoundPx((layoutState?.screenRect?.x ?? 0) + viewportRect.x),
+      top: viewportRoundPx((layoutState?.screenRect?.y ?? 0) + viewportRect.y),
       width: viewportRect.width,
       height: viewportRect.height
     },
     gaps: {
-      left: roundPx(viewportRect.x),
-      top: roundPx(viewportRect.y),
-      right: roundPx(
+      left: viewportRoundPx(viewportRect.x),
+      top: viewportRoundPx(viewportRect.y),
+      right: viewportRoundPx(
         Math.max(
           0,
           (layoutState?.screenRect?.width ?? viewportRect.width) - viewportRect.x - viewportRect.width
         )
       ),
-      bottom: roundPx(
+      bottom: viewportRoundPx(
         Math.max(
           0,
           (layoutState?.screenRect?.height ?? viewportRect.height) - viewportRect.y - viewportRect.height
