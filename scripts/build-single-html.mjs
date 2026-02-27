@@ -17,6 +17,8 @@ const renderersDir = path.resolve(rootDir, "src/renderers");
 const gamePath = path.resolve(rootDir, "src/game.js");
 const pixiPath = path.resolve(rootDir, "node_modules/pixi.js/dist/pixi.min.js");
 const outputPath = path.resolve(distDir, "playable.html");
+const serviceWorkerPath = path.resolve(rootDir, "service-worker.js");
+const outputServiceWorkerPath = path.resolve(distDir, "service-worker.js");
 
 await fs.access(assetsEntryPath).catch(() => {
   throw new Error(
@@ -60,6 +62,79 @@ function minifyHtmlLite(source) {
     .trim();
 }
 
+const MIME_BY_EXT = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+  [".gif", "image/gif"],
+  [".svg", "image/svg+xml"],
+  [".mp3", "audio/mpeg"],
+  [".ogg", "audio/ogg"],
+  [".wav", "audio/wav"],
+  [".m4a", "audio/mp4"]
+]);
+
+function mimeForPath(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_BY_EXT.get(ext) || "application/octet-stream";
+}
+
+function resolveAssetPath(value) {
+  if (typeof value !== "string" || value.startsWith("data:")) {
+    return null;
+  }
+
+  if (value.startsWith("file://")) {
+    return fileURLToPath(value);
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return null;
+  }
+
+  if (value.startsWith("/")) {
+    return path.resolve(rootDir, `.${value}`);
+  }
+
+  return path.resolve(rootDir, value);
+}
+
+async function inlineAssetValue(value) {
+  const assetPath = resolveAssetPath(value);
+  if (!assetPath) {
+    return value;
+  }
+
+  const bytes = await fs.readFile(assetPath);
+  const mime = mimeForPath(assetPath);
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
+async function inlineAssetMaps(images, audio) {
+  const imageEntries = await Promise.all(
+    Object.entries(images || {}).map(async ([key, value]) => [key, await inlineAssetValue(value)])
+  );
+
+  const audioEntries = await Promise.all(
+    Object.entries(audio || {}).map(async ([key, config]) => {
+      const url = await inlineAssetValue(config?.url);
+      return [
+        key,
+        {
+          ...config,
+          url
+        }
+      ];
+    })
+  );
+
+  return {
+    images: Object.fromEntries(imageEntries),
+    audio: Object.fromEntries(audioEntries)
+  };
+}
+
 function serializeAssetModulesSource({ images, audio, frames }) {
   return [
     `const ASSET_IMAGES=${JSON.stringify(images)};`,
@@ -74,6 +149,8 @@ const [imagesModule, audioModule, framesModule] = await Promise.all([
   import(pathToFileURL(path.resolve(assetsDir, "audio.js")).href),
   import(pathToFileURL(path.resolve(assetsDir, "frames.js")).href)
 ]);
+
+const inlinedAssets = await inlineAssetMaps(imagesModule.ASSET_IMAGES, audioModule.ASSET_AUDIO);
 
 const [indexHtml, css, ...restSources] = await Promise.all([
   fs.readFile(indexPath, "utf8"),
@@ -98,8 +175,8 @@ const cleanedUiEffects = stripLocalImports(uiEffects);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
 const cleanedGame = stripLocalImports(game);
 const assetModulesSource = serializeAssetModulesSource({
-  images: imagesModule.ASSET_IMAGES,
-  audio: audioModule.ASSET_AUDIO,
+  images: inlinedAssets.images,
+  audio: inlinedAssets.audio,
   frames: framesModule.ASSET_FRAMES
 });
 const escapeInlineScript = (source) => source.replace(/<\/script>/gi, "<\\/script>");
@@ -126,11 +203,13 @@ html = minifyHtmlLite(html);
 
 await fs.mkdir(distDir, { recursive: true });
 await fs.writeFile(outputPath, html, "utf8");
+await fs.copyFile(serviceWorkerPath, outputServiceWorkerPath);
 
 const stat = await fs.stat(outputPath);
 const sizeBytes = stat.size;
 const sizeKb = (sizeBytes / 1024).toFixed(1);
 const sizeMb = (stat.size / 1024 / 1024).toFixed(2);
 console.log(`Built ${outputPath}`);
+console.log(`Copied ${outputServiceWorkerPath}`);
 console.log(`Bundle size: ${sizeBytes} bytes (${sizeKb} KB)`);
 console.log(`Bundle size: ${sizeMb} MB`);

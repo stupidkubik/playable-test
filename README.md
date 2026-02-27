@@ -55,6 +55,13 @@ npm run dev
 
 Это снижает time-to-interactive в dev/runtime и отдельно прогревает музыку.
 
+### 1.1 Service Worker cache (повторные загрузки)
+
+- В `service-worker.js` включено runtime-кэширование через `Cache Storage`.
+- Документы: `network-first` с fallback в кэш.
+- Статика (images/audio/scripts/styles/fonts): `stale-while-revalidate`.
+- Регистрация выполняется в `src/game.js` только в secure context (`https` или `localhost`).
+
 ### 2. Полноэкранный адаптивный layout (`src/layout/layoutEngine.js`, `src/viewport.js`)
 
 Layout engine на каждом resize/orientation-change считает:

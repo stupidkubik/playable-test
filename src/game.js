@@ -53,6 +53,33 @@ const footerCta = document.querySelector("#footer-cta");
 const startBtn = document.querySelector("#start-btn");
 const CTA_URL = "https://apps.apple.com/app/id6444492155";
 
+function registerServiceWorker() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return;
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  const protocol = window.location?.protocol || "";
+  const hostname = window.location?.hostname || "";
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  const isSecureContext = protocol === "https:" || isLocalHost;
+
+  if (!isSecureContext) {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("./service-worker.js")
+      .catch((error) => console.warn("[sw] registration failed", error));
+  });
+}
+
+registerServiceWorker();
+
 canvas.width = GAME_WIDTH;
 canvas.height = GAME_HEIGHT;
 

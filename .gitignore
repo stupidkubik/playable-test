@@ -1,4 +1,5 @@
 dist/playable.html
+dist/service-worker.js
 .DS_Store
 node_modules/
 .tmp_extracted_images/

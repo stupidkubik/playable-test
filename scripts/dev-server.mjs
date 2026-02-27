@@ -16,10 +16,28 @@ const mimeByExt = new Map([
   [".css", "text/css; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".png", "image/png"],
+  [".webp", "image/webp"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
   [".svg", "image/svg+xml"],
-  [".ico", "image/x-icon"]
+  [".ico", "image/x-icon"],
+  [".mp3", "audio/mpeg"],
+  [".ogg", "audio/ogg"],
+  [".wav", "audio/wav"],
+  [".m4a", "audio/mp4"]
+]);
+
+const cacheableAssetExt = new Set([
+  ".png",
+  ".webp",
+  ".jpg",
+  ".jpeg",
+  ".svg",
+  ".ico",
+  ".mp3",
+  ".ogg",
+  ".wav",
+  ".m4a"
 ]);
 
 function resolvePath(urlPath) {
@@ -48,6 +66,10 @@ const server = http.createServer(async (req, res) => {
     const ext = path.extname(targetPath).toLowerCase();
 
     res.setHeader("Content-Type", mimeByExt.get(ext) || "application/octet-stream");
+    res.setHeader(
+      "Cache-Control",
+      cacheableAssetExt.has(ext) ? "public, max-age=31536000, immutable" : "no-cache"
+    );
     res.statusCode = 200;
     res.end(content);
   } catch {
