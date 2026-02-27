@@ -2,11 +2,15 @@
 
 Клон playable-креатива по референсу: [playbox.play.plbx.ai/playoff/runner](https://playbox.play.plbx.ai/playoff/runner).
 
-Проект собран как lightweight playable на чистом JS: `Pixi.js` (v8) отвечает за сцену и игровые сущности, DOM/HTML/CSS — за HUD, оверлеи и CTA. Итоговая сборка упаковывается в single HTML.
+Проект сделан как lightweight playable на чистом JS:
+
+- `Pixi.js` (v8) рендерит игровую сцену и сущности;
+- DOM/CSS отвечают за HUD, оверлеи и CTA;
+- сборка упаковывается в single HTML (`dist/playable.html`).
 
 ## Быстрый старт
 
-Требования: Node.js 18+.
+Требования: `Node.js 18+`.
 
 ```bash
 npm install
@@ -17,144 +21,108 @@ npm run dev
 
 ## Скрипты
 
-- `npm run dev` — локальный сервер разработки.
-- `npm test` — тесты базовой логики (`node --test`).
-- `npm run build` — сборка `dist/playable.html` из локальных ассетов проекта (`src/assets/*`).
-- `npm run build:pages` — сборка playable + подготовка `docs/playable/index.html` для GitHub Pages.
-
-## Публикация на GitHub Pages (Jekyll)
-
-В проекте настроены:
-
-- `_config.yml` — конфигурация Jekyll (источник сайта: `docs/`);
-- `docs/index.md` — главная страница Pages;
-- `.github/workflows/pages.yml` — CI/CD workflow деплоя на GitHub Pages;
-- `scripts/prepare-pages.mjs` — копирование `dist/playable.html` в `docs/playable/index.html`.
-
-Что нужно включить в GitHub:
-
-1. Открыть `Settings` → `Pages`.
-2. В разделе `Build and deployment` выбрать `Source: GitHub Actions`.
-3. Запушить изменения в `main` — workflow сам соберёт playable и задеплоит сайт.
+- `npm run dev` — локальный dev-server.
+- `npm test` — unit-тесты (`node --test`).
+- `npm run build` — single-html сборка в `dist/playable.html`.
+- `npm run build:pages` — сборка + копирование в `docs/playable/index.html` для GitHub Pages.
 
 ## Структура проекта
 
-- `index.html` — корневая разметка: canvas, HUD, оверлеи, footer CTA.
-- `src/game.js` — runtime-оркестратор: state, цикл, спавн, коллизии, input, звук, переходы экранов.
-- `src/gameLogic.js` — чистая логика/константы: конфиги, hitbox, расчёты, spawn sequence.
-- `src/renderers/pixiRenderer.js` — Pixi-рендер слоёв (фон, декор, сущности, финиш, FX, tutorial hint).
-- `src/uiEffects.js` — DOM-эффекты и анимации UI (end screen, flying collectibles, countdown).
-- `src/style.css` — стили HUD/оверлеев/футера/кнопок.
-- `src/assets/images.js` / `src/assets/audio.js` / `src/assets/frames.js` — локализованные модули ассетов (data-uri + frames metadata).
-- `src/assets/playableAssets.js` — агрегатор локальных модулей ассетов для runtime/build (`ASSETS`).
-- `scripts/build-single-html.mjs` — упаковка в одиночный HTML.
-- `test/gameLogic.test.js` — unit-тесты для логики.
+- `index.html` — корневая разметка (canvas, HUD, overlays, footer CTA).
+- `src/game.js` — runtime-оркестратор (state, game loop, spawn/collision, input, audio, transitions).
+- `src/gameLogic.js` — чистая логика/константы (конфиги, hitbox, spawn distance, finish gate geometry).
+- `src/viewport.js` — адаптер viewport/layout для runtime.
+- `src/layout/layoutEngine.js` — layout-движок: aspect-bucket, camera/world transform, UI/gameplay tokens, CSS vars.
+- `src/renderers/pixiRenderer.js` — Pixi-рендер слоев, sprite pooling, finish/tape, combo popups, tutorial hint.
+- `src/uiEffects.js` — DOM-эффекты (end screen, countdown, flying collectibles).
+- `src/style.css` — стили fullscreen shell, HUD, overlays, footer.
+- `src/assets/*.js` — локальные ассеты (images/audio/frames), включая split-модули `imagesCritical/imagesDeferred`, `audioMusic/audioSfx`.
+- `scripts/build-single-html.mjs` — упаковка ассетов, Pixi runtime и проекта в один HTML.
+- `test/gameLogic.test.js` — unit-тесты логики.
 
-## Основная рабочая логика
+## Runtime: актуальная логика
 
-### 1. Инициализация (`src/game.js`)
+### 1. Инициализация и staged preload (`src/game.js`)
 
-- Создаются ссылки на DOM-элементы (`HUD`, оверлеи, кнопки, footer CTA).
-- Рассчитывается `GROUND_Y` из высоты игры и `PLAYER_CONFIG.groundOffset`.
-- Формируется единый объект `state`:
-  - режим игры (`mode`);
-  - счет/HP;
-  - игрок;
-  - массивы сущностей (`enemies`, `obstacles`, `collectibles`, `warningLabels`);
-  - `finishLine`;
-  - ресурсы (`images`, `audio`);
-  - служебные поля игрового цикла и эффектов.
+При старте:
 
-### 2. Состояния игры (`STATES` в `src/gameLogic.js`)
+1. Поднимается `viewportManager` и подписка на layout-изменения.
+2. Инициализируется `state` (режим, игрок, сущности, очки, аудио, эффекты).
+3. Ресурсы грузятся в 2 фазы:
+   - critical: минимальный набор картинок + music;
+   - deferred: остальная графика + sfx в фоне.
+4. После critical-пакета можно запускать игровой цикл, deferred-пакет догружается параллельно.
 
-- `loading` — загрузка ассетов.
-- `intro` — стартовый экран.
-- `running` — основной ран.
-- `paused` — tutorial pause (пауза перед первым врагом).
-- `end_win` — победа.
-- `end_lose` — проигрыш.
+Это снижает time-to-interactive в dev/runtime и отдельно прогревает музыку.
 
-Переходами управляет `src/game.js` (`startRun`, `triggerTutorialPause`, `handleWin`, `handleLose`).
+### 2. Полноэкранный адаптивный layout (`src/layout/layoutEngine.js`, `src/viewport.js`)
 
-### 3. Игровой цикл (`requestAnimationFrame`)
+Layout engine на каждом resize/orientation-change считает:
 
-Основной цикл реализован в `src/game.js` через `gameLoop()`:
+- `bucket` формата (`portrait_*`, `landscape_*`);
+- `cameraViewWorldRect` и `cameraTransform`;
+- `uiTokens` (HUD/footer/overlay размеры, шрифты, паддинги);
+- `gameplayTokens` (позиция игрока, groundY, spawn/cleanup параметры, tutorial text Y);
+- CSS variables и data-атрибуты (`data-layout-*`) для DOM-слоя.
 
-1. Считается `delta`.
-2. Вызывается `update(...)`.
-3. Вызывается `render(...)`.
-4. Планируется следующий кадр (`requestAnimationFrame`).
+Камера тянет мир на весь viewport без искажения пропорций спрайтов; UI адаптируется отдельными токенами.
 
-В режиме `running` ключевой апдейт идёт через `updateRunning(...)`:
+### 3. Состояния игры (`STATES` в `src/gameLogic.js`)
 
-1. Обновление скорости (включая замедление на финише).
-2. Обновление дистанции и скролла фона.
-3. Спавн сущностей по `SPAWN_SEQUENCE`.
-4. Движение сущностей (`updateEntities`).
-5. Tutorial trigger (пауза перед первым врагом).
-6. Проверка финиша (запуск замедления и разрыв ленты).
-7. Коллизии и сбор предметов.
-8. Очистка сущностей за пределами экрана.
-9. Апдейт игрока (прыжок/анимация/инвулн).
+- `loading`
+- `intro`
+- `running`
+- `paused` (tutorial pause)
+- `end_win`
+- `end_lose`
 
-### 4. Спавн и сценарий уровня
+Переходы управляются `startRun`, `triggerTutorialPause`, `resumeFromTutorial`, `handleWin`, `handleLose`.
 
-В `src/gameLogic.js` сценарий задаётся в `SPAWN_SEQUENCE`:
+### 4. Игровой цикл (`requestAnimationFrame`)
 
-- каждая запись содержит `type` (`enemy`, `obstacle`, `collectible`, `finish`);
-- `distance` задаётся в "экранах" (потом конвертируется в пиксели);
-- optional-поля: `yOffset`, `warningLabel`, `pauseForTutorial`.
+`gameLoop()` в `src/game.js`:
 
-В `src/game.js`:
+1. считает `delta`;
+2. вызывает `update(...)`;
+3. вызывает `render(...)`;
+4. планирует следующий кадр.
 
-- `checkSpawns()` смотрит текущую пройденную дистанцию;
-- `shouldSpawn(...)` решает, пора ли заспавнить сущность;
-- `spawnEntity(...)` делегирует в конкретные фабрики (`spawnEnemy`, `spawnObstacle`, `spawnCollectible`, `spawnFinishLine`).
+В `running`:
 
-### 5. Коллизии и экономика
+- обновляется скорость и deceleration на финише;
+- двигаются сущности и фон;
+- выполняется spawn;
+- проверяются коллизии/сбор;
+- удаляются сущности за cleanup-границей;
+- апдейтится игрок (прыжок/инвулн/анимация).
 
-Логика столкновений разнесена по типам:
+### 5. Spawn и cleanup
 
-- прямоугольные hitbox для игрока/врага/препятствия;
-- круговая проверка подбирания коллектаблов (`collectibleIntersects`).
+Сценарий уровня задает `SPAWN_SEQUENCE` (`src/gameLogic.js`).
 
-Ключевые функции находятся в `src/gameLogic.js`:
+Дистанция спавна (`distance`) переводится в пиксели через runtime-метрики:
 
-- `playerHitbox(...)`
-- `enemyHitbox(...)`
-- `obstacleHitbox(...)`
-- `collectibleIntersects(...)`
-- `getCollectibleValue(...)`
+- в `landscape` используется фиксированное окно вокруг игрока (стабильный pacing);
+- в `portrait` окно зависит от camera/world размера и bucket.
 
-`src/game.js` обновляет:
+Дополнительно при смене layout есть `resizeCooldownMs`, чтобы избежать burst-спавна в момент resize/orientation switch.
 
-- `hp` при попадании во врага/препятствие;
-- `score` при сборе монет/PayPal-карточки;
-- UI через `syncGameHeader()` и `uiEffects`.
+### 6. Коллизии, экономика, combo popups
 
-### 6. Финиш и замедление
+- hitbox игрока/врага/препятствия и collectible-intersection считаются в `src/gameLogic.js`;
+- экономика (`ECONOMY_CONFIG`): стартовый баланс, номиналы наград, HP;
+- при серии сборов показываются мотивационные popups (`Perfect/Awesome/Fantastic`);
+- streak сбрасывается при получении урона.
 
-Финиш состоит из двух частей:
+### 7. Финиш, лента и конфетти
 
-- логика (`src/game.js`, объект `state.finishLine`);
-- визуал (`src/renderers/pixiRenderer.js`, `syncFinishLayer(...)`).
+- геометрия финишных ворот и ленты централизована в `computeFinishGateGeometry(...)`;
+- при пересечении break-line запускается deceleration и анимация разрыва ленты;
+- конфетти делается сериями залпов: основной burst + отложенные follow-up burst-ы.
 
-Механика:
+### 8. Рендер Pixi (`src/renderers/pixiRenderer.js`)
 
-- при достижении `tapeBreakX` запускается `startDeceleration()`;
-- скорость плавно падает (`nextDeceleratedSpeed(...)`);
-- включается конфетти и помечается `finishLine.tapeBroken = true`;
-- после полной остановки запускается `handleWin()`.
-
-Важно для правок:
-
-- если вы меняете визуальное положение стоек/ленты в `src/renderers/pixiRenderer.js`,
-- синхронно обновляйте логику точки срабатывания (`finishLine.tapeBreakX`) в `src/game.js`,
-- иначе разрыв ленты будет происходить "не там", где она нарисована.
-
-### 7. Рендер (Pixi.js)
-
-Рендерер создаётся в `createPixiRenderer(...)` (`src/renderers/pixiRenderer.js`) и работает по слоям:
+Слои:
 
 - `sky`
 - `decor`
@@ -166,83 +134,94 @@ npm run dev
 - `warnings`
 - `player`
 - `fx`
+- `comboPopups`
 - `tutorialHint`
 
-Каждый кадр рендерер читает `state` и синхронизирует слой через `sync*Layer(...)`.
+Текущие оптимизации:
 
-Отдельно важно:
+- object pool для часто меняющихся сущностей;
+- early-return и кэш параметров для sky/decor при неизменном кадре;
+- culling декора вне видимого окна;
+- prewarm текстур/текстовых нод перед рантаймом.
 
-- игрок и враг рисуются из sprite-sheet с учётом trimmed frame metadata (`sourceX/sourceY/sourceW/sourceH`);
-- это убирает визуальное "плавание" анимации относительно hitbox/позиции.
+### 9. DOM-слой (`src/uiEffects.js`, `src/style.css`)
 
-### 8. UI и DOM-эффекты
+DOM управляет:
 
-DOM отвечает за то, что удобнее/дешевле держать вне Pixi:
+- HUD (сердца и счет);
+- стартовым overlay;
+- win/lose overlay;
+- reward card + countdown + CTA;
+- footer CTA.
 
-- стартовый оверлей;
-- win/lose-экраны;
-- PayPal reward card;
-- countdown;
-- footer CTA;
-- flying collectible-анимация в HUD.
+CSS завязан на layout variables (`--layout-*`, `--game-viewport-*`) и поддерживает fullscreen для portrait/landscape.
 
-Логика — в `src/uiEffects.js`, стили — в `src/style.css`.
+## Perf debug режим
 
-## Где менять баланс и поведение
+В `src/game.js` есть встроенный perf-логгер.
 
-Основные конфиги — `src/gameLogic.js`:
+Включение:
 
-- `PLAYER_CONFIG` — позиция, масштаб, прыжок, invincibility.
-- `SPEED_CONFIG` — базовая скорость, ускорение врага, замедление на финише.
-- `HITBOX_CONFIG` — размеры/сдвиги hitbox'ов.
-- `ECONOMY_CONFIG` — стартовый баланс и награды.
-- `SPAWN_SEQUENCE` — сценарий спавна по дистанции.
+- query: `?debugPerf=1`
+- или `localStorage.setItem("playable:debugPerf", "1")`
+- или глобально: `window.__PLAYABLE_DEBUG_PERF__ = true`
 
-Локальные игровые размеры — `src/game.js`:
+Настройка порогов:
 
-- `enemyCollisionScale`
-- `collectibleBaseScale`
-- `collectibleRenderSize(type)` (например, размер PayPal-карточки в раннере)
-- `spawnFinishLine()` и логика `tapeBreakX`
+- `debugPerfFrameMs`
+- `debugPerfSpawnMs`
+- `debugPerfGapMs`
 
-Визуал и позиционирование — `src/renderers/pixiRenderer.js`:
+Логгер пишет предупреждения по slow frame и slow `checkSpawns()`.
 
-- слои и порядок отрисовки;
-- смещения спрайтов;
-- позиция/геометрия финишных ворот и ленты;
-- эффекты/подсказки.
+## Где менять поведение
 
-DOM/UI — `src/style.css`:
+### Баланс и геймплей (`src/gameLogic.js`)
 
-- размер шрифтов HUD и end screen;
-- позиция footer CTA;
-- стили кнопок и оверлеев.
+- `PLAYER_CONFIG`
+- `SPEED_CONFIG`
+- `HITBOX_CONFIG`
+- `ECONOMY_CONFIG`
+- `FINISH_CONFIG`
+- `SPAWN_SEQUENCE`
 
-## Часто меняемые точки (шпаргалка)
+### Runtime-параметры (`src/game.js`)
 
-- Финишные ворота (визуально): `src/renderers/pixiRenderer.js` → `syncFinishLayer(...)`.
-- Точка срабатывания финиша: `src/game.js` → `finishLine.tapeBreakX`.
-- Размер PayPal-карточки как collectible: `src/game.js` → `collectibleRenderSize("paypalCard")`.
-- Размер суммы на большой PayPal-карточке (финальный экран): `src/style.css` → `.paypal-card-amount`.
-- Кнопка в футере: `src/style.css` → `.game-footer` и `.footer-cta`.
+- размеры/масштабы runtime-сущностей;
+- поведение combo/confetti;
+- правила spawn/collision/reset;
+- логика переходов состояний.
 
-## Почему рендер анимации выглядит корректно
+### Адаптив и компоновка (`src/layout/layoutEngine.js`, `src/style.css`)
 
-В исходном референсе кадры атласов trimmed (вырезаны по контенту), поэтому простой `drawImage` по фиксированному размеру даёт артефакты.
+- bucket-правила и camera caps;
+- player base X по форматам;
+- spawn/cleanup window токены;
+- HUD/footer/end-overlay размеры и типографика.
 
-В локальных модулях ассетов сохранены метаданные исходного прямоугольника (`sourceX/sourceY/sourceW/sourceH`), а Pixi-рендер учитывает их при расчёте `drawX/drawY`. Это сохраняет стабильное положение персонажей в кадре.
+### Визуал сцены (`src/renderers/pixiRenderer.js`)
 
-## Текущий статус
+- порядок слоев;
+- позиционирование декора;
+- анимация финишной ленты;
+- tutorial/combo текст.
 
-Реализовано:
+## Тесты
 
-- стартовый экран и игровой ран;
-- tutorial pause;
-- враги, препятствия, коллектаблы, финиш;
-- win/lose оверлеи;
-- HUD и footer CTA;
-- Pixi-рендер сцены и сущностей;
-- confetti и flying collectible-эффекты;
-- локальные ассеты и сборка single HTML.
+`npm test` покрывает критичную часть `src/gameLogic.js`:
 
-Проект подходит как рабочий прототип для дальнейшей точной подгонки таймингов, позиций, hitbox'ов и визуала под референс.
+- базовая геометрия коллизий;
+- spawn conversion/check;
+- jump math;
+- finish gate geometry.
+
+## Публикация на GitHub Pages
+
+В проекте настроены:
+
+- `_config.yml`
+- `docs/index.md`
+- `.github/workflows/pages.yml`
+- `scripts/prepare-pages.mjs`
+
+В `Settings -> Pages` выбирается `Source: GitHub Actions`, дальше деплой идет через push в `main`.
