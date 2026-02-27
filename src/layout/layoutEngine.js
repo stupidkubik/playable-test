@@ -10,6 +10,16 @@ function roundPx(value) {
 const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
 const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 700;
 const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 600;
+const LANDSCAPE_SPAWN_UNIT_BY_BUCKET = Object.freeze({
+  landscape_short: 1120,
+  landscape_regular: 1160,
+  landscape_wide: 1200
+});
+const PORTRAIT_SPAWN_UNIT_MULTIPLIER_BY_BUCKET = Object.freeze({
+  portrait_tall: 1.18,
+  portrait_regular: 1.16,
+  portrait_tablet: 1.1
+});
 const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
   portrait_tall: 0.08,
   portrait_regular: 0.082,
@@ -81,6 +91,15 @@ function playerXRatioForBucket(bucket, fallbackRatio) {
   }
 
   return fallbackRatio;
+}
+
+function spawnDistanceUnitForBucket(bucket, cameraWorldWidth) {
+  if (bucket.startsWith("landscape")) {
+    return LANDSCAPE_SPAWN_UNIT_BY_BUCKET[bucket] ?? LANDSCAPE_FIXED_SPAWN_UNIT_PX;
+  }
+
+  const multiplier = PORTRAIT_SPAWN_UNIT_MULTIPLIER_BY_BUCKET[bucket] ?? 1;
+  return roundPx(clamp(cameraWorldWidth * multiplier, 680, 980));
 }
 
 function safeInsetsFromViewport(rootRect) {
@@ -290,7 +309,7 @@ function buildGameplayTokens({
   const runtimeGroundY = roundPx(designWorldHeight - playerGroundOffset);
   const baseVisualScale = roundPx(clamp(cameraTransform.scale, 0.6, 1.8));
   const compact = bucket.startsWith("landscape");
-  const spawnDistancePxPerUnit = compact ? LANDSCAPE_FIXED_SPAWN_UNIT_PX : roundPx(cameraViewWorldRect.width);
+  const spawnDistancePxPerUnit = spawnDistanceUnitForBucket(bucket, cameraViewWorldRect.width);
   const spawnLeadViewportWidth = compact ? LANDSCAPE_FIXED_SPAWN_AHEAD_PX : roundPx(cameraViewWorldRect.width);
   const cleanupMarginX = compact
     ? LANDSCAPE_FIXED_CLEANUP_BEHIND_PX
