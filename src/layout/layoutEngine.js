@@ -21,9 +21,9 @@ const PORTRAIT_SPAWN_UNIT_MULTIPLIER_BY_BUCKET = Object.freeze({
   portrait_tablet: 1.1
 });
 const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
-  portrait_tall: 0.08,
-  portrait_regular: 0.082,
-  portrait_tablet: 0.088,
+  portrait_tall: 0,
+  portrait_regular: 0,
+  portrait_tablet: 0.06,
   landscape_short: 0.6,
   landscape_regular: 0.8,
   landscape_wide: 1
@@ -227,7 +227,7 @@ function buildUiTokens({
   );
   const overlayPadding = roundPx(clamp(18 * densityScale, 10, 28));
   const endModalMaxWidth = roundPx(
-    clamp(isLandscape ? safeRect.width * 0.62 : safeRect.width * 0.88, 280, isLandscape ? 560 : 520)
+    clamp(isLandscape ? safeRect.width * 0.68 : safeRect.width * 0.88, 300, isLandscape ? 620 : 520)
   );
   const endModalMaxHeight = roundPx(clamp(safeRect.height * 0.82, 240, safeRect.height - 8));
 
@@ -240,8 +240,10 @@ function buildUiTokens({
     hudPadY: roundPx(clamp(14 * densityScale, 8, 20)),
     hudGap: roundPx(clamp(8 * densityScale, 4, 10)),
     hudHeartSize: roundPx(clamp(50 * densityScale, 16, 32)),
-    counterImageW: roundPx(clamp(200 * densityScale, 54, 108)),
-    counterFontSize: roundPx(clamp(50 * densityScale, 13, 26)),
+    counterImageW: roundPx(
+      clamp(236 * densityScale * (isLandscape ? 1.12 : 1), isLandscape ? 72 : 64, isLandscape ? 156 : 132)
+    ),
+    counterFontSize: roundPx(clamp(44 * densityScale * (isLandscape ? 1.02 : 1), 12, isLandscape ? 24 : 26)),
     counterAmountPadRight: roundPx(
       clamp(12 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 8 : 6, isLandscape ? 16 : 12)
     ),

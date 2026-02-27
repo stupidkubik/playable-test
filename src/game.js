@@ -85,6 +85,7 @@ const collectibleFallbackSourceSize = Object.freeze({
   paypalCard: { width: 800, height: 200 }
 });
 const collectibleBaseLift = 64;
+const collectibleAerialOffsetBoost = 70;
 const confettiTextureKeys = [
   "confettiParticle1",
   "confettiParticle2",
@@ -105,7 +106,8 @@ const CONFETTI_CONFIG = {
   SIDE_MARGIN: 50,
   SIDE_SPAWN_HEIGHT: 0.7,
   SIDE_SPAWN_SPREAD_Y: 200,
-  SECONDARY_BURST_DELAY_MS: 280,
+  SECONDARY_BURST_DELAY_MS: 500,
+  SECONDARY_BURST_REPEAT_COUNT: 3,
   SECONDARY_BURST_COUNT_SCALE: 0.72,
   SECONDARY_BURST_SPREAD_SCALE: 1.18,
   GRAVITY: 0.05,
@@ -1177,18 +1179,27 @@ function collectibleRenderSize(type) {
   return { width: baseWidth, height: baseHeight };
 }
 
+function adjustedCollectibleYOffset(yOffset = 0) {
+  if (!Number.isFinite(yOffset) || yOffset <= 0) {
+    return 0;
+  }
+
+  return yOffset + collectibleAerialOffsetBoost;
+}
+
 function spawnCollectible(yOffset = 0) {
   const spawnX = currentSpawnWorldX();
   const type = Math.random() < 0.6 ? "dollar" : "paypalCard";
   const { width, height } = collectibleRenderSize(type);
-  const baselineLift = yOffset > 0 ? 0 : collectibleBaseLift;
+  const adjustedYOffset = adjustedCollectibleYOffset(yOffset);
+  const baselineLift = adjustedYOffset > 0 ? 0 : collectibleBaseLift;
 
   const collectible = {
     id: allocateId(),
     x: spawnX,
     width,
     height,
-    y: currentGroundY() - height - yOffset - baselineLift,
+    y: currentGroundY() - height - adjustedYOffset - baselineLift,
     speed: SPEED_CONFIG.base,
     collected: false,
     collectibleType: type,
@@ -1517,8 +1528,8 @@ function triggerFinishConfetti() {
   burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures);
   burstConfettiSide(logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
 
-  state.confettiBurstTimeoutId = setTimeout(() => {
-    state.confettiBurstTimeoutId = null;
+  let remainingBursts = CONFETTI_CONFIG.SECONDARY_BURST_REPEAT_COUNT;
+  const runFollowupBurst = () => {
     const followupY = spawnY + (Math.random() - 0.5) * 80;
     burstConfettiSide(
       CONFETTI_CONFIG.SIDE_MARGIN,
@@ -1536,7 +1547,17 @@ function triggerFinishConfetti() {
       CONFETTI_CONFIG.SECONDARY_BURST_COUNT_SCALE,
       CONFETTI_CONFIG.SECONDARY_BURST_SPREAD_SCALE
     );
-  }, CONFETTI_CONFIG.SECONDARY_BURST_DELAY_MS);
+
+    remainingBursts -= 1;
+    if (remainingBursts <= 0) {
+      state.confettiBurstTimeoutId = null;
+      return;
+    }
+
+    state.confettiBurstTimeoutId = setTimeout(runFollowupBurst, CONFETTI_CONFIG.SECONDARY_BURST_DELAY_MS);
+  };
+
+  state.confettiBurstTimeoutId = setTimeout(runFollowupBurst, CONFETTI_CONFIG.SECONDARY_BURST_DELAY_MS);
 }
 
 function updateConfetti(deltaMs) {

@@ -36,6 +36,7 @@ const DECOR_ITEMS = Object.freeze([
   Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 1200, y: 0, w: 200, h: 700 }),
   Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 1400, y: 530, w: 220, h: 180 })
 ]);
+const DECOR_CULL_MARGIN = 180;
 
 const WARNING_BADGE_BASE_W = 166;
 const WARNING_BADGE_BASE_H = 52;
@@ -49,6 +50,7 @@ const WARNING_TEXT_STYLE = Object.freeze({
 });
 
 const COMBO_BASE_FONT_SIZE = 56;
+const COMBO_LANDSCAPE_FONT_SCALE = 1.22;
 const COMBO_SHADOW_STYLE = Object.freeze({
   fontFamily: "GameFont",
   fontSize: COMBO_BASE_FONT_SIZE,
@@ -70,7 +72,10 @@ const TUTORIAL_SHADOW_STYLE = Object.freeze({
   fontSize: 60,
   fontWeight: "700",
   fill: 0x000000,
-  align: "center"
+  align: "center",
+  wordWrap: true,
+  breakWords: false,
+  wordWrapWidth: 560
 });
 
 const TUTORIAL_FRONT_STYLE = Object.freeze({
@@ -78,7 +83,10 @@ const TUTORIAL_FRONT_STYLE = Object.freeze({
   fontSize: 60,
   fontWeight: "700",
   fill: 0xffffff,
-  align: "center"
+  align: "center",
+  wordWrap: true,
+  breakWords: false,
+  wordWrapWidth: 560
 });
 
 const MAX_RENDER_RESOLUTION = 1.5;
@@ -388,11 +396,24 @@ export function createPixiRenderer(options = {}) {
     fallbackRect: null,
     fallbackLastWidth: 0,
     fallbackLastHeight: 0,
-    fallbackLastGroundY: 0
+    fallbackLastGroundY: 0,
+    lastSceneTexture: null,
+    lastSceneOffset: Number.NaN,
+    lastSceneDrawWidth: Number.NaN,
+    lastSceneWorldWidth: Number.NaN,
+    lastSceneWorldHeight: Number.NaN,
+    lastSceneGroundY: Number.NaN
   };
 
   const decorState = {
-    sprites: []
+    sprites: [],
+    visibleSpriteCount: 0,
+    lastSceneTexture: null,
+    lastSceneOffset: Number.NaN,
+    lastSceneDrawWidth: Number.NaN,
+    lastWorldWidth: Number.NaN,
+    lastGroundY: Number.NaN,
+    lastTextureMask: ""
   };
 
   const groundFallbackState = {
@@ -426,7 +447,9 @@ export function createPixiRenderer(options = {}) {
     container: null,
     shadowText: null,
     frontText: null,
-    hand: null
+    hand: null,
+    lastText: "",
+    lastWrapWidth: 560
   };
 
   const enemyPool = createPool();
@@ -589,10 +612,13 @@ export function createPixiRenderer(options = {}) {
   function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight) {
     const scene = sceneState?.resources?.images?.sceneBackground;
     const sceneTexture = textureForImage(PIXIRef, textureCache, scene);
+    const skyOffset = sceneState?.skyOffset || 0;
 
     if (!sceneTexture || !scene?.height) {
-      for (const sprite of skyState.sprites) {
-        hideDisplay(sprite);
+      if (skyState.lastSceneTexture !== null) {
+        for (const sprite of skyState.sprites) {
+          hideDisplay(sprite);
+        }
       }
 
       const fallback = ensureSkyFallback();
@@ -607,6 +633,12 @@ export function createPixiRenderer(options = {}) {
         skyState.fallbackLastHeight = worldHeight;
         skyState.fallbackLastGroundY = groundY;
       }
+      skyState.lastSceneTexture = null;
+      skyState.lastSceneOffset = Number.NaN;
+      skyState.lastSceneDrawWidth = Number.NaN;
+      skyState.lastSceneWorldWidth = Number.NaN;
+      skyState.lastSceneWorldHeight = Number.NaN;
+      skyState.lastSceneGroundY = Number.NaN;
       visibleDisplay(fallback, true);
       return;
     }
@@ -617,8 +649,19 @@ export function createPixiRenderer(options = {}) {
 
     const scale = worldHeight / scene.height;
     const drawWidth = Math.max(1, scene.width * scale);
-    const baseTileIndexStart = Math.floor((sceneState?.skyOffset || 0) / drawWidth);
-    const wrappedOffset = ((((sceneState?.skyOffset || 0) % drawWidth) + drawWidth) % drawWidth);
+    if (
+      skyState.lastSceneTexture === sceneTexture &&
+      skyState.lastSceneOffset === skyOffset &&
+      skyState.lastSceneDrawWidth === drawWidth &&
+      skyState.lastSceneWorldWidth === worldWidth &&
+      skyState.lastSceneWorldHeight === worldHeight &&
+      skyState.lastSceneGroundY === groundY
+    ) {
+      return;
+    }
+
+    const baseTileIndexStart = Math.floor(skyOffset / drawWidth);
+    const wrappedOffset = ((skyOffset % drawWidth) + drawWidth) % drawWidth;
     const tileIndexStart = baseTileIndexStart - 1;
     const tileStartX = -wrappedOffset - drawWidth;
     const tileCount = Math.ceil(worldWidth / drawWidth) + 3;
@@ -638,6 +681,13 @@ export function createPixiRenderer(options = {}) {
     for (let i = tileCount; i < skyState.sprites.length; i += 1) {
       hideDisplay(skyState.sprites[i]);
     }
+
+    skyState.lastSceneTexture = sceneTexture;
+    skyState.lastSceneOffset = skyOffset;
+    skyState.lastSceneDrawWidth = drawWidth;
+    skyState.lastSceneWorldWidth = worldWidth;
+    skyState.lastSceneWorldHeight = worldHeight;
+    skyState.lastSceneGroundY = groundY;
   }
 
   function ensureGroundFallback() {
@@ -731,9 +781,23 @@ export function createPixiRenderer(options = {}) {
     const images = sceneState?.resources?.images;
     const scene = images?.sceneBackground;
     if (!scene || !scene.height) {
-      for (const sprite of decorState.sprites) {
-        hideDisplay(sprite);
+      if (decorState.visibleSpriteCount > 0) {
+        for (const sprite of decorState.sprites) {
+          hideDisplay(sprite);
+        }
       }
+      decorState.visibleSpriteCount = 0;
+      decorState.lastSceneTexture = null;
+      decorState.lastSceneOffset = Number.NaN;
+      decorState.lastSceneDrawWidth = Number.NaN;
+      decorState.lastWorldWidth = Number.NaN;
+      decorState.lastGroundY = Number.NaN;
+      decorState.lastTextureMask = "";
+      return;
+    }
+
+    const sceneTexture = textureForImage(PIXIRef, textureCache, scene);
+    if (!sceneTexture) {
       return;
     }
 
@@ -745,11 +809,31 @@ export function createPixiRenderer(options = {}) {
       sceneBushSmall: textureForImage(PIXIRef, textureCache, images.sceneBushSmall),
       sceneLamp: textureForImage(PIXIRef, textureCache, images.sceneLamp)
     };
+    const textureMask = [
+      textureByKey.sceneTreeLeft ? 1 : 0,
+      textureByKey.sceneTreeRight ? 1 : 0,
+      textureByKey.sceneBushLarge ? 1 : 0,
+      textureByKey.sceneBushMedium ? 1 : 0,
+      textureByKey.sceneBushSmall ? 1 : 0,
+      textureByKey.sceneLamp ? 1 : 0
+    ].join("");
 
     const sceneScale = groundY / scene.height;
     const sceneDrawWidth = Math.max(1, scene.width * sceneScale);
-    const tileIndexStart = Math.floor((sceneState?.skyOffset || 0) / sceneDrawWidth);
-    const wrappedOffset = ((((sceneState?.skyOffset || 0) % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth);
+    const skyOffset = sceneState?.skyOffset || 0;
+    if (
+      decorState.lastSceneTexture === sceneTexture &&
+      decorState.lastSceneOffset === skyOffset &&
+      decorState.lastSceneDrawWidth === sceneDrawWidth &&
+      decorState.lastWorldWidth === visibleWorldWidth &&
+      decorState.lastGroundY === groundY &&
+      decorState.lastTextureMask === textureMask
+    ) {
+      return;
+    }
+
+    const tileIndexStart = Math.floor(skyOffset / sceneDrawWidth);
+    const wrappedOffset = ((skyOffset % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth;
     const tileStartX = -wrappedOffset;
     const tileCount = Math.ceil(visibleWorldWidth / sceneDrawWidth) + 2;
 
@@ -769,10 +853,18 @@ export function createPixiRenderer(options = {}) {
           continue;
         }
 
+        const spriteX = mirrored ? tileX + (sceneDrawWidth - item.x) : tileX + item.x;
+        const minX = mirrored ? spriteX - item.w : spriteX;
+        const maxX = mirrored ? spriteX : spriteX + item.w;
+        if (maxX < -DECOR_CULL_MARGIN || minX > visibleWorldWidth + DECOR_CULL_MARGIN) {
+          hideDisplay(sprite);
+          continue;
+        }
+
         const scaleX = item.w / texture.width;
         const scaleY = item.h / texture.height;
         sprite.texture = texture;
-        sprite.x = mirrored ? tileX + (sceneDrawWidth - item.x) : tileX + item.x;
+        sprite.x = spriteX;
         sprite.y = item.y;
         sprite.scale.set(mirrored ? -scaleX : scaleX, scaleY);
         visibleDisplay(sprite, true);
@@ -782,6 +874,14 @@ export function createPixiRenderer(options = {}) {
     for (let i = spriteIndex; i < decorState.sprites.length; i += 1) {
       hideDisplay(decorState.sprites[i]);
     }
+
+    decorState.visibleSpriteCount = spriteIndex;
+    decorState.lastSceneTexture = sceneTexture;
+    decorState.lastSceneOffset = skyOffset;
+    decorState.lastSceneDrawWidth = sceneDrawWidth;
+    decorState.lastWorldWidth = visibleWorldWidth;
+    decorState.lastGroundY = groundY;
+    decorState.lastTextureMask = textureMask;
   }
 
   function ensurePlayerNodes() {
@@ -1404,8 +1504,9 @@ export function createPixiRenderer(options = {}) {
     return node;
   }
 
-  function syncComboPopupsLayer(sceneState) {
+  function syncComboPopupsLayer(sceneState, layoutState = null) {
     const popups = sceneState?.comboPopups || [];
+    const comboFontScale = layoutState?.orientation === "landscape" ? COMBO_LANDSCAPE_FONT_SCALE : 1;
 
     for (let i = 0; i < popups.length; i += 1) {
       const popup = popups[i];
@@ -1417,7 +1518,7 @@ export function createPixiRenderer(options = {}) {
       }
 
       const nextText = popup.text;
-      const nextFontSize = popup.fontSize || COMBO_BASE_FONT_SIZE;
+      const nextFontSize = Math.round((popup.fontSize || COMBO_BASE_FONT_SIZE) * comboFontScale);
       const nextColor = popup.color ?? 0xffffff;
 
       if (node.lastText !== nextText) {
@@ -1549,6 +1650,29 @@ export function createPixiRenderer(options = {}) {
     const hintY = hasNumber(layoutState?.gameplayTokens?.tutorialTextY)
       ? layoutState.gameplayTokens.tutorialTextY
       : worldHeight * 0.58;
+    const isLandscape = layoutState?.orientation === "landscape";
+    const nextWrapWidth = Math.round(clamp01(
+      (isLandscape ? worldWidth * 0.72 : worldWidth * 0.9) / 620
+    ) * (620 - 240) + 240);
+    const nextText = "Jump to avoid enemies";
+
+    if (nodes.lastWrapWidth !== nextWrapWidth) {
+      nodes.shadowText.style = {
+        ...TUTORIAL_SHADOW_STYLE,
+        wordWrapWidth: nextWrapWidth
+      };
+      nodes.frontText.style = {
+        ...TUTORIAL_FRONT_STYLE,
+        wordWrapWidth: nextWrapWidth
+      };
+      nodes.lastWrapWidth = nextWrapWidth;
+    }
+
+    if (nodes.lastText !== nextText) {
+      nodes.shadowText.text = nextText;
+      nodes.frontText.text = nextText;
+      nodes.lastText = nextText;
+    }
 
     const centerX = worldWidth * 0.5;
     nodes.shadowText.x = centerX;
@@ -1741,6 +1865,24 @@ export function createPixiRenderer(options = {}) {
   }
 
   function resetPoolsVisibility() {
+    skyState.fallbackLastWidth = -1;
+    skyState.fallbackLastHeight = -1;
+    skyState.fallbackLastGroundY = -1;
+    skyState.lastSceneTexture = null;
+    skyState.lastSceneOffset = Number.NaN;
+    skyState.lastSceneDrawWidth = Number.NaN;
+    skyState.lastSceneWorldWidth = Number.NaN;
+    skyState.lastSceneWorldHeight = Number.NaN;
+    skyState.lastSceneGroundY = Number.NaN;
+
+    decorState.visibleSpriteCount = 0;
+    decorState.lastSceneTexture = null;
+    decorState.lastSceneOffset = Number.NaN;
+    decorState.lastSceneDrawWidth = Number.NaN;
+    decorState.lastWorldWidth = Number.NaN;
+    decorState.lastGroundY = Number.NaN;
+    decorState.lastTextureMask = "";
+
     for (const sprite of skyState.sprites) {
       hideDisplay(sprite);
     }
@@ -1866,6 +2008,7 @@ export function createPixiRenderer(options = {}) {
       }
 
       const sceneState = frame?.state || null;
+      const layoutState = frame?.layoutState || null;
       if (!prewarmed && sceneState?.resources?.images) {
         prewarmRendererResources(frame);
       }
@@ -1886,13 +2029,13 @@ export function createPixiRenderer(options = {}) {
       syncWarningsLayer(sceneState, elapsedSeconds);
       syncPlayerLayer(sceneState);
       syncFxLayer(sceneState);
-      syncComboPopupsLayer(sceneState);
+      syncComboPopupsLayer(sceneState, layoutState);
       syncTutorialHintLayer(
         sceneState,
         elapsedSeconds,
         worldMetrics.worldWidth,
         worldMetrics.worldHeight,
-        frame?.layoutState || null
+        layoutState
       );
 
       app.render();
