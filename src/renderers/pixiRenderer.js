@@ -1361,7 +1361,7 @@ export function createPixiRenderer(options = {}) {
 
     for (const warning of warnings) {
       const node = acquirePoolNode(warningPool, warning.id, createWarningNode);
-      const pulse = 1 + Math.sin(elapsedSeconds * 8 + warning.pulseSeed) * 0.1;
+      const pulse = 1 + Math.sin(elapsedSeconds * 3 + warning.pulseSeed) * 0.1;
       node.group.x = warning.x + 34;
       node.group.y = warning.y - 8;
       node.group.scale.set(pulse, pulse);

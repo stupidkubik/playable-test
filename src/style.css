@@ -110,7 +110,7 @@ body {
 
 .paypal-counter-amount {
   position: absolute;
-  right: 6px;
+  right: 8px;
   top: 50%;
   transform: translateY(-52%);
   font-size: 22px;
@@ -677,8 +677,8 @@ canvas {
     height: 80px;
     padding: 0 10px 6px;
     background-image: var(--footer-landscape);
-    background-size: 100% 100%;
-    background-position: center center;
+    background-size: 100% auto;
+    background-position: center bottom;
   }
 
   .footer-cta {
@@ -797,7 +797,7 @@ body {
 }
 
 .app-shell.app-shell--fullscreen .paypal-counter-amount {
-  right: clamp(3px, calc(6px * var(--runtime-ui-scale)), 6px);
+  right: var(--layout-counter-amount-pad-right, clamp(6px, calc(10px * var(--runtime-ui-scale)), 10px));
   font-size: var(--layout-counter-font-size, clamp(12px, calc(22px * var(--runtime-ui-scale)), 22px));
 }
 
@@ -831,7 +831,7 @@ body {
   padding:
     0 calc(var(--safe-right) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px))) calc(var(--safe-bottom) + var(--layout-footer-pad-bottom, clamp(6px, calc(15px * var(--runtime-ui-scale)), 15px))) calc(var(--safe-left) + var(--layout-footer-pad-x, clamp(8px, calc(12px * var(--runtime-ui-scale)), 12px)));
   background-image: var(--footer-portrait);
-  background-size: 100% 100%;
+  background-size: 100% auto;
   background-position: center bottom;
 }
 

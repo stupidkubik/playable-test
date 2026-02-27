@@ -94,7 +94,7 @@ const confettiTextureKeys = [
   "confettiParticle6"
 ];
 const CONFETTI_CONFIG = {
-  PARTICLE_COUNT: 50,
+  PARTICLE_COUNT: 66,
   LIFETIME: 5000,
   FADE_START: 0.7,
   SCALE_MIN: 0.8,
@@ -105,6 +105,9 @@ const CONFETTI_CONFIG = {
   SIDE_MARGIN: 50,
   SIDE_SPAWN_HEIGHT: 0.7,
   SIDE_SPAWN_SPREAD_Y: 200,
+  SECONDARY_BURST_DELAY_MS: 280,
+  SECONDARY_BURST_COUNT_SCALE: 0.72,
+  SECONDARY_BURST_SPREAD_SCALE: 1.18,
   GRAVITY: 0.05,
   AIR_RESISTANCE: 0.998,
   WIND_X: 0,
@@ -434,6 +437,7 @@ const state = {
   lastStepSoundAt: 0,
   musicPlayPending: false,
   winTimeoutId: null,
+  confettiBurstTimeoutId: null,
   nextId: 1,
   frozenEnemyAnimationTick: null,
   confettiParticles: [],
@@ -825,6 +829,15 @@ function stopMusic() {
   music.currentTime = 0;
 }
 
+function clearScheduledConfettiBurst() {
+  if (!state.confettiBurstTimeoutId) {
+    return;
+  }
+
+  clearTimeout(state.confettiBurstTimeoutId);
+  state.confettiBurstTimeoutId = null;
+}
+
 function comboPraiseForStreak(streak) {
   return COMBO_PRAISE_RULES.find((rule) => streak === rule.streak) || null;
 }
@@ -919,6 +932,7 @@ function resetWorld() {
     clearTimeout(state.winTimeoutId);
     state.winTimeoutId = null;
   }
+  clearScheduledConfettiBurst();
   uiEffects.clearEndTimers();
 
   state.mode = STATES.intro;
@@ -1023,12 +1037,12 @@ function triggerTutorialPause() {
   state.frozenEnemyAnimationTick = Math.floor(performance.now() / 100);
 }
 
-function spawnWarningLabel(x) {
+function spawnWarningLabel(x, pulseSeed = Math.random() * Math.PI * 2) {
   state.warningLabels.push({
     id: allocateId(),
     x,
     y: currentGroundY() - 200,
-    pulseSeed: Math.random() * Math.PI * 2
+    pulseSeed
   });
 }
 
@@ -1069,6 +1083,7 @@ function spawnObstacle() {
   };
 
   state.obstacles.push(obstacle);
+  return obstacle;
 }
 
 function imageIntrinsicSize(image, fallbackSize) {
@@ -1160,10 +1175,9 @@ function spawnEntity(entry) {
   }
 
   if (entry.type === "obstacle") {
-    spawnObstacle();
+    const obstacle = spawnObstacle();
     if (entry.warningLabel) {
-      const spawnX = currentSpawnWorldX();
-      spawnWarningLabel(spawnX);
+      spawnWarningLabel(obstacle.x, obstacle.pulseSeed);
     }
     return;
   }
@@ -1403,11 +1417,12 @@ function spawnConfettiParticle(textures, x, y, angleRadians, spreadRadians) {
   });
 }
 
-function burstConfettiSide(x, y, angleDeg, textures) {
+function burstConfettiSide(x, y, angleDeg, textures, countScale = 1, spreadScale = 1) {
   const angleRadians = (angleDeg * Math.PI) / 180;
-  const spreadRadians = (CONFETTI_CONFIG.BURST_ANGLE_SPREAD * Math.PI) / 180;
+  const spreadRadians = (CONFETTI_CONFIG.BURST_ANGLE_SPREAD * Math.PI * spreadScale) / 180;
+  const particleCount = Math.max(1, Math.round(CONFETTI_CONFIG.PARTICLE_COUNT * countScale));
 
-  for (let i = 0; i < CONFETTI_CONFIG.PARTICLE_COUNT; i += 1) {
+  for (let i = 0; i < particleCount; i += 1) {
     spawnConfettiParticle(
       textures,
       x,
@@ -1419,6 +1434,8 @@ function burstConfettiSide(x, y, angleDeg, textures) {
 }
 
 function triggerFinishConfetti() {
+  clearScheduledConfettiBurst();
+
   const textures = confettiTextures();
   if (textures.length === 0) {
     return;
@@ -1428,6 +1445,27 @@ function triggerFinishConfetti() {
   const spawnY = logicMetrics.worldHeight * CONFETTI_CONFIG.SIDE_SPAWN_HEIGHT;
   burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures);
   burstConfettiSide(logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
+
+  state.confettiBurstTimeoutId = setTimeout(() => {
+    state.confettiBurstTimeoutId = null;
+    const followupY = spawnY + (Math.random() - 0.5) * 80;
+    burstConfettiSide(
+      CONFETTI_CONFIG.SIDE_MARGIN,
+      followupY,
+      -66,
+      textures,
+      CONFETTI_CONFIG.SECONDARY_BURST_COUNT_SCALE,
+      CONFETTI_CONFIG.SECONDARY_BURST_SPREAD_SCALE
+    );
+    burstConfettiSide(
+      logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN,
+      followupY,
+      -114,
+      textures,
+      CONFETTI_CONFIG.SECONDARY_BURST_COUNT_SCALE,
+      CONFETTI_CONFIG.SECONDARY_BURST_SPREAD_SCALE
+    );
+  }, CONFETTI_CONFIG.SECONDARY_BURST_DELAY_MS);
 }
 
 function updateConfetti(deltaMs) {
@@ -1744,5 +1782,6 @@ window.addEventListener("beforeunload", () => {
   if (state.winTimeoutId) {
     clearTimeout(state.winTimeoutId);
   }
+  clearScheduledConfettiBurst();
   uiEffects.clearEndTimers();
 });

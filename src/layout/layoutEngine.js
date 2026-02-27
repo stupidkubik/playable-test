@@ -204,6 +204,9 @@ function buildUiTokens({
     hudHeartSize: roundPx(clamp(50 * densityScale, 16, 32)),
     counterImageW: roundPx(clamp(200 * densityScale, 54, 108)),
     counterFontSize: roundPx(clamp(50 * densityScale, 13, 26)),
+    counterAmountPadRight: roundPx(
+      clamp(12 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 8 : 6, isLandscape ? 16 : 12)
+    ),
     footerHeight,
     footerPadX: roundPx(clamp(12 * densityScale, 8, 14)),
     footerPadBottom: roundPx(clamp(14 * densityScale, 6, 18)),
@@ -341,6 +344,7 @@ function buildCssVarMap(layoutState) {
     "--layout-hud-heart-size": `${uiTokens.hudHeartSize}px`,
     "--layout-counter-image-w": `${uiTokens.counterImageW}px`,
     "--layout-counter-font-size": `${uiTokens.counterFontSize}px`,
+    "--layout-counter-amount-pad-right": `${uiTokens.counterAmountPadRight}px`,
     "--layout-footer-h": `${uiTokens.footerHeight}px`,
     "--layout-footer-pad-x": `${uiTokens.footerPadX}px`,
     "--layout-footer-pad-bottom": `${uiTokens.footerPadBottom}px`,
