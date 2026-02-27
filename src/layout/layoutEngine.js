@@ -197,31 +197,33 @@ function buildUiTokens({
   const refScale = clamp(Math.min(safeRect.width / 720, safeRect.height / 1280), 0.62, 1.35);
   const densityScale = clampByDensity(refScale, uiDensity, 0.9);
   const isLandscape = bucket.startsWith("landscape");
+  const landscapeFooterHeightRatio =
+    bucket === "landscape_short" ? 0.2 : bucket === "landscape_regular" ? 0.19 : 0.18;
   const portraitNarrowWidthProgress = isLandscape ? 0 : clamp((500 - safeRect.width) / 180, 0, 1);
   const portraitFooterHeightFactor = 1 - portraitNarrowWidthProgress * 0.14;
   const footerHeight = roundPx(
     clamp(
-      isLandscape ? safeRect.height * 0.16 : safeRect.height * 0.12 * portraitFooterHeightFactor,
-      isLandscape ? 64 : 60,
-      156
+      isLandscape ? safeRect.height * landscapeFooterHeightRatio : safeRect.height * 0.12 * portraitFooterHeightFactor,
+      isLandscape ? 72 : 60,
+      isLandscape ? 170 : 156
     )
   );
-  const landscapeFooterCtaBoost = isLandscape ? clamp(safeRect.width / 1000, 0.96, 1.15) : 1;
+  const landscapeFooterCtaBoost = isLandscape ? clamp(safeRect.width / 860, 1.06, 1.3) : 1;
   const footerCtaFont = roundPx(
     clamp(
-      22 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.08 : 1),
-      isLandscape ? 12 : 10,
-      isLandscape ? 24 : 22
+      22 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.14 : 1),
+      isLandscape ? 14 : 10,
+      isLandscape ? 28 : 22
     )
   );
   const footerCtaPadX = roundPx(
-    clamp(18 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.08 : 1), isLandscape ? 12 : 10, 22)
+    clamp(18 * densityScale * (isLandscape ? landscapeFooterCtaBoost * 1.12 : 1), isLandscape ? 14 : 10, isLandscape ? 28 : 22)
   );
   const footerCtaPadY = roundPx(
-    clamp(10 * densityScale * (isLandscape ? 1.08 : 1), isLandscape ? 7 : 6, 12)
+    clamp(10 * densityScale * (isLandscape ? 1.15 : 1), isLandscape ? 8 : 6, isLandscape ? 14 : 12)
   );
   const footerCtaMinWidth = roundPx(
-    clamp(isLandscape ? safeRect.width * 0.13 : 0, isLandscape ? 118 : 0, isLandscape ? 210 : 0)
+    clamp(isLandscape ? safeRect.width * 0.155 : 0, isLandscape ? 140 : 0, isLandscape ? 238 : 0)
   );
   const overlayPadding = roundPx(clamp(18 * densityScale, 10, 28));
   const endModalMaxWidth = roundPx(
