@@ -122,6 +122,10 @@ const COMBO_POPUP_CONFIG = {
   baseScale: 1,
   popScale: 1.2
 };
+const SPAWN_RUNTIME_CONFIG = {
+  maxSpawnsPerFrame: 3,
+  resizeCooldownMs: 220
+};
 const COMBO_PRAISE_RULES = [
   { streak: 6, text: "Perfect!", color: 0xffd54a, outline: 0x442000, fontSize: 58 },
   { streak: 10, text: "Awesome!", color: 0x79f1ff, outline: 0x103a52, fontSize: 60 },
@@ -399,6 +403,8 @@ const state = {
   tutorialEnemyId: null,
   spawnIndex: 0,
   distanceTraveled: 0,
+  spawnUnitWidth: GAME_WIDTH,
+  spawnResumeAtMs: 0,
   currentSpeed: SPEED_CONFIG.base,
   isDecelerating: false,
   finishLineSpawned: false,
@@ -454,6 +460,7 @@ let activeRenderer = null;
 viewportManager.subscribe(
   (viewportState) => {
     activeRenderer?.resize?.(viewportState.layoutState || viewportState);
+    syncSpawnMetricsForLayoutChange(viewportState.layoutState || null);
   },
   { immediate: false }
 );
@@ -484,6 +491,39 @@ function currentLogicMetrics() {
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
+}
+
+function currentSpawnUnitWidth() {
+  const logicMetrics = currentLogicMetrics();
+  return logicMetrics.spawnDistancePxPerUnit ?? logicMetrics.worldWidth ?? GAME_WIDTH;
+}
+
+function rescaleDistanceTraveledForSpawnUnit(nextSpawnUnitWidth) {
+  if (!Number.isFinite(nextSpawnUnitWidth) || nextSpawnUnitWidth <= 0) {
+    return;
+  }
+
+  const previousSpawnUnitWidth =
+    Number.isFinite(state.spawnUnitWidth) && state.spawnUnitWidth > 0
+      ? state.spawnUnitWidth
+      : nextSpawnUnitWidth;
+
+  if (Math.abs(previousSpawnUnitWidth - nextSpawnUnitWidth) >= 0.5) {
+    const traveledUnits = state.distanceTraveled / previousSpawnUnitWidth;
+    state.distanceTraveled = traveledUnits * nextSpawnUnitWidth;
+    if (state.mode === STATES.running && state.isRunning) {
+      state.spawnResumeAtMs = performance.now() + SPAWN_RUNTIME_CONFIG.resizeCooldownMs;
+    }
+  }
+
+  state.spawnUnitWidth = nextSpawnUnitWidth;
+}
+
+function syncSpawnMetricsForLayoutChange(layoutState) {
+  const gameplayTokens = layoutState?.gameplayTokens;
+  const nextSpawnUnitWidth =
+    gameplayTokens?.spawnDistancePxPerUnit ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH;
+  rescaleDistanceTraveledForSpawnUnit(nextSpawnUnitWidth);
 }
 
 function currentSpawnWorldX() {
@@ -944,6 +984,8 @@ function resetWorld() {
   state.tutorialEnemyId = null;
   state.spawnIndex = 0;
   state.distanceTraveled = 0;
+  state.spawnResumeAtMs = 0;
+  state.spawnUnitWidth = currentSpawnUnitWidth();
   state.currentSpeed = SPEED_CONFIG.base;
   state.isDecelerating = false;
   state.finishLineSpawned = false;
@@ -1194,8 +1236,20 @@ function spawnEntity(entry) {
 
 function checkSpawns() {
   const perfStart = perfDebugLogger.enabled ? performance.now() : 0;
+  if (state.spawnResumeAtMs > 0 && performance.now() < state.spawnResumeAtMs) {
+    if (perfDebugLogger.enabled) {
+      perfDebugLogger.setCheckSpawnsMs(performance.now() - perfStart);
+    }
+    return;
+  }
+
   const logicMetrics = currentLogicMetrics();
+  let spawnedThisFrame = 0;
   while (state.spawnIndex < SPAWN_SEQUENCE.length) {
+    if (spawnedThisFrame >= SPAWN_RUNTIME_CONFIG.maxSpawnsPerFrame) {
+      break;
+    }
+
     const entry = SPAWN_SEQUENCE[state.spawnIndex];
     const spawnDistance = spawnDistanceToPx(entry.distance, logicMetrics);
 
@@ -1205,6 +1259,7 @@ function checkSpawns() {
 
     spawnEntity(entry);
     state.spawnIndex += 1;
+    spawnedThisFrame += 1;
   }
 
   if (perfDebugLogger.enabled) {
