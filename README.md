@@ -8,6 +8,8 @@
 - DOM/CSS отвечают за HUD, оверлеи и CTA;
 - сборка упаковывается в single HTML (`dist/playable.html`).
 
+Краткая история изменений: [CHANGELOG.md](./CHANGELOG.md).
+
 ## Быстрый старт
 
 Требования: `Node.js 18+`.
@@ -209,6 +211,12 @@ npm run stress:heavy
 
 - `npm run build` использует `src/stress/runtime.stub.js` (stress-код не попадает в прод-бандл);
 - `npm run build:stress` включает `src/stress/runtime.full.js` и пишет артефакт в `dist/playable.stress.html`.
+
+## Локальные артефакты
+
+- Локальные stress-отчеты, видео и временные файлы складываются в `artifacts/local/`.
+- `artifacts/local/` не коммитится в репозиторий (добавлен в `.gitignore`).
+- `dist/playable.stress.html` тоже считается локальным диагностическим артефактом и не коммитится.
 
 Скрипт выводит URL с параметрами, например:
 
