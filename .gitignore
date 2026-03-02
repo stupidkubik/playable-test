@@ -1,8 +1,14 @@
 dist/playable.html
+dist/playable.stress.html
 dist/service-worker.js
 .DS_Store
+.cursor/
 node_modules/
 .tmp_extracted_images/
+.tmp_freeze_frames/
+freeze.MP4
+stress-report-stress-*.json
+artifacts/local/
 docs/playable/
 .tmp_fullscreen_adaptive_refactor_plan.md
 .tmp_adaptive_v2_mini_spec.md
