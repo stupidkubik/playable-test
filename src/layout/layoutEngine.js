@@ -24,9 +24,14 @@ const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
   portrait_tall: 0,
   portrait_regular: 0,
   portrait_tablet: 0.06,
-  landscape_short: 0.6,
-  landscape_regular: 0.8,
-  landscape_wide: 1
+  landscape_short: 0.5,
+  landscape_regular: 0.5,
+  landscape_wide: 0.5
+});
+const LANDSCAPE_CAMERA_ASPECT_CAP_BY_BUCKET = Object.freeze({
+  landscape_short: 1.78,
+  landscape_regular: 1.72,
+  landscape_wide: 1.65
 });
 
 function getVisualViewport() {
@@ -136,11 +141,18 @@ function buildSafeRect(screenRect, insets) {
 }
 
 function cameraAspectCapForBucket(bucket, screenAspect, wideCameraAspectCap) {
-  if (bucket === "landscape_wide") {
-    return Math.min(screenAspect, wideCameraAspectCap);
+  if (!bucket.startsWith("landscape")) {
+    return screenAspect;
   }
 
-  return screenAspect;
+  const bucketCap = bucket === "landscape_wide"
+    ? wideCameraAspectCap
+    : LANDSCAPE_CAMERA_ASPECT_CAP_BY_BUCKET[bucket] ?? wideCameraAspectCap;
+  if (!Number.isFinite(bucketCap) || bucketCap <= 0) {
+    return screenAspect;
+  }
+
+  return Math.min(screenAspect, bucketCap);
 }
 
 function buildCameraViewWorldRect({
@@ -329,7 +341,7 @@ function buildGameplayTokens({
     spawnReferenceWorldW: spawnDistancePxPerUnit,
     worldToScreenScale: cameraTransform.scale,
     runtimeGroundY,
-    playerBaseX: layoutRoundPx(designWorldWidth * playerBaseRatio),
+    playerBaseX: layoutRoundPx(cameraViewWorldRect.width * playerBaseRatio),
     playerVisualScale: compact ? layoutRoundPx(baseVisualScale * 0.96) : baseVisualScale,
     enemyVisualScale: compact ? layoutRoundPx(baseVisualScale * 0.94) : baseVisualScale,
     obstacleVisualScale: baseVisualScale,
@@ -484,6 +496,8 @@ export function createLayoutEngine(options = {}) {
       worldViewportRect,
       cameraViewWorldRect
     });
+    const cameraAspect = layoutRoundPx(cameraViewWorldRect.width / cameraViewWorldRect.height);
+    const roundedScreenAspect = layoutRoundPx(screenAspect);
     const footerVariant = footerVariantForBucket(bucket);
     const overlayMode = overlayModeForBucket(bucket);
     const uiDensity = uiDensityForBucket(bucket);
@@ -522,8 +536,15 @@ export function createLayoutEngine(options = {}) {
       zones,
       uiTokens,
       gameplayTokens,
+      metrics: {
+        screenAspect: roundedScreenAspect,
+        cameraAspect,
+        effectiveAspect: cameraAspect,
+        cameraAspectCapped: cameraAspect < roundedScreenAspect - 0.01
+      },
       caps: {
-        wideCameraAspectCap
+        wideCameraAspectCap,
+        landscapeCameraAspectCapByBucket: LANDSCAPE_CAMERA_ASPECT_CAP_BY_BUCKET
       }
     };
   }
