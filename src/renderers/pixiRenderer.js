@@ -90,7 +90,9 @@ const TUTORIAL_FRONT_STYLE = Object.freeze({
 });
 
 const MAX_RENDER_RESOLUTION = 1;
-const MAX_DECOR_WORLD_WIDTH = 2600;
+const MAX_DECOR_WORLD_WIDTH = 4200;
+const LANDSCAPE_RENDER_OVERSCAN_LEFT_RATIO = 0.2;
+const LANDSCAPE_RENDER_OVERSCAN_RIGHT_RATIO = 0.35;
 const PLAYER_DAMAGE_REACTION_DEFAULT_MS = 650;
 const PLAYER_DAMAGE_REACTION_RUN_SEQUENCE = Object.freeze([0, 1, 3, 5, 3, 1, 0]);
 
@@ -252,6 +254,21 @@ function frameSourceBox(frame) {
     sourceY: frame.sourceY ?? 0,
     sourceW: frame.sourceW ?? frame.w,
     sourceH: frame.sourceH ?? frame.h
+  };
+}
+
+function renderOverscanForLayout(layoutState, worldWidth) {
+  if (!Number.isFinite(worldWidth) || worldWidth <= 0) {
+    return { left: 0, right: 0 };
+  }
+
+  if (layoutState?.orientation !== "landscape") {
+    return { left: 0, right: 0 };
+  }
+
+  return {
+    left: worldWidth * LANDSCAPE_RENDER_OVERSCAN_LEFT_RATIO,
+    right: worldWidth * LANDSCAPE_RENDER_OVERSCAN_RIGHT_RATIO
   };
 }
 
@@ -492,12 +509,14 @@ export function createPixiRenderer(options = {}) {
   const skyState = {
     sprites: [],
     fallbackRect: null,
+    fallbackLastX: Number.NaN,
     fallbackLastWidth: 0,
     fallbackLastHeight: 0,
     fallbackLastGroundY: 0,
     lastSceneTexture: null,
     lastSceneOffset: Number.NaN,
     lastSceneDrawWidth: Number.NaN,
+    lastSceneWorldX: Number.NaN,
     lastSceneWorldWidth: Number.NaN,
     lastSceneWorldHeight: Number.NaN,
     lastSceneGroundY: Number.NaN
@@ -509,6 +528,7 @@ export function createPixiRenderer(options = {}) {
     lastSceneTexture: null,
     lastSceneOffset: Number.NaN,
     lastSceneDrawWidth: Number.NaN,
+    lastWorldX: Number.NaN,
     lastWorldWidth: Number.NaN,
     lastGroundY: Number.NaN,
     lastTextureMask: ""
@@ -519,6 +539,7 @@ export function createPixiRenderer(options = {}) {
     groundRect: null,
     stripes: [],
     stripeCount: 0,
+    lastX: 0,
     lastWidth: 0,
     lastHeight: 0,
     lastGroundY: 0,
@@ -708,6 +729,9 @@ export function createPixiRenderer(options = {}) {
   }
 
   function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight) {
+    const overscan = renderOverscanForLayout(sceneState?.layoutState, worldWidth);
+    const renderWorldX = -overscan.left;
+    const renderWorldWidth = Math.min(worldWidth + overscan.left + overscan.right, MAX_DECOR_WORLD_WIDTH);
     const scene = sceneState?.resources?.images?.sceneBackground;
     const sceneTexture = textureForImage(PIXIRef, textureCache, scene);
     const skyOffset = sceneState?.skyOffset || 0;
@@ -720,21 +744,23 @@ export function createPixiRenderer(options = {}) {
       }
 
       const fallback = ensureSkyFallback();
-      const effectiveWorldWidth = Math.min(worldWidth, MAX_DECOR_WORLD_WIDTH);
       if (
-        skyState.fallbackLastWidth !== effectiveWorldWidth ||
+        skyState.fallbackLastX !== renderWorldX ||
+        skyState.fallbackLastWidth !== renderWorldWidth ||
         skyState.fallbackLastHeight !== worldHeight ||
         skyState.fallbackLastGroundY !== groundY
       ) {
         fallback.clear();
-        fallback.rect(0, 0, effectiveWorldWidth, groundY).fill(0x8dc3ea);
-        skyState.fallbackLastWidth = effectiveWorldWidth;
+        fallback.rect(renderWorldX, 0, renderWorldWidth, groundY).fill(0x8dc3ea);
+        skyState.fallbackLastX = renderWorldX;
+        skyState.fallbackLastWidth = renderWorldWidth;
         skyState.fallbackLastHeight = worldHeight;
         skyState.fallbackLastGroundY = groundY;
       }
       skyState.lastSceneTexture = null;
       skyState.lastSceneOffset = Number.NaN;
       skyState.lastSceneDrawWidth = Number.NaN;
+      skyState.lastSceneWorldX = Number.NaN;
       skyState.lastSceneWorldWidth = Number.NaN;
       skyState.lastSceneWorldHeight = Number.NaN;
       skyState.lastSceneGroundY = Number.NaN;
@@ -746,25 +772,23 @@ export function createPixiRenderer(options = {}) {
       hideDisplay(skyState.fallbackRect);
     }
 
-    const effectiveWorldWidth = Math.min(worldWidth, MAX_DECOR_WORLD_WIDTH);
     const scale = worldHeight / scene.height;
     const drawWidth = Math.max(1, scene.width * scale);
     if (
       skyState.lastSceneTexture === sceneTexture &&
       skyState.lastSceneOffset === skyOffset &&
       skyState.lastSceneDrawWidth === drawWidth &&
-      skyState.lastSceneWorldWidth === effectiveWorldWidth &&
+      skyState.lastSceneWorldX === renderWorldX &&
+      skyState.lastSceneWorldWidth === renderWorldWidth &&
       skyState.lastSceneWorldHeight === worldHeight &&
       skyState.lastSceneGroundY === groundY
     ) {
       return;
     }
 
-    const baseTileIndexStart = Math.floor(skyOffset / drawWidth);
-    const wrappedOffset = ((skyOffset % drawWidth) + drawWidth) % drawWidth;
-    const tileIndexStart = baseTileIndexStart - 1;
-    const tileStartX = -wrappedOffset - drawWidth;
-    const tileCount = Math.ceil(effectiveWorldWidth / drawWidth) + 3;
+    const tileIndexStart = Math.floor((skyOffset + renderWorldX) / drawWidth) - 1;
+    const tileStartX = tileIndexStart * drawWidth - skyOffset;
+    const tileCount = Math.ceil(renderWorldWidth / drawWidth) + 3;
 
     for (let i = 0; i < tileCount; i += 1) {
       const tileIndex = tileIndexStart + i;
@@ -785,7 +809,8 @@ export function createPixiRenderer(options = {}) {
     skyState.lastSceneTexture = sceneTexture;
     skyState.lastSceneOffset = skyOffset;
     skyState.lastSceneDrawWidth = drawWidth;
-    skyState.lastSceneWorldWidth = effectiveWorldWidth;
+    skyState.lastSceneWorldX = renderWorldX;
+    skyState.lastSceneWorldWidth = renderWorldWidth;
     skyState.lastSceneWorldHeight = worldHeight;
     skyState.lastSceneGroundY = groundY;
   }
@@ -820,6 +845,10 @@ export function createPixiRenderer(options = {}) {
   }
 
   function syncGroundLayer(sceneState, worldWidth, groundY, worldHeight) {
+    const overscan = renderOverscanForLayout(sceneState?.layoutState, worldWidth);
+    const renderWorldX = -overscan.left;
+    const renderWorldWidth = Math.min(worldWidth + overscan.left + overscan.right, MAX_DECOR_WORLD_WIDTH);
+
     if (sceneState?.resources?.images?.sceneBackground) {
       if (groundFallbackState.container) {
         hideDisplay(groundFallbackState.container);
@@ -831,27 +860,34 @@ export function createPixiRenderer(options = {}) {
     visibleDisplay(fallback.container, true);
 
     if (
-      groundFallbackState.lastWidth !== worldWidth ||
+      groundFallbackState.lastX !== renderWorldX ||
+      groundFallbackState.lastWidth !== renderWorldWidth ||
       groundFallbackState.lastHeight !== worldHeight ||
       groundFallbackState.lastGroundY !== groundY
     ) {
       fallback.groundRect.clear();
-      fallback.groundRect.rect(0, groundY, worldWidth, Math.max(1, worldHeight - groundY)).fill(0x1f2f3e);
-      groundFallbackState.lastWidth = worldWidth;
+      fallback.groundRect.rect(renderWorldX, groundY, renderWorldWidth, Math.max(1, worldHeight - groundY)).fill(0x1f2f3e);
+      groundFallbackState.lastX = renderWorldX;
+      groundFallbackState.lastWidth = renderWorldWidth;
       groundFallbackState.lastHeight = worldHeight;
       groundFallbackState.lastGroundY = groundY;
     }
 
     const offset = sceneState?.groundOffset || 0;
     const stripeOffset = offset % 56;
-    if (groundFallbackState.lastOffsetKey === stripeOffset && groundFallbackState.stripeCount > 0) {
+    const stripeCount = Math.ceil(renderWorldWidth / 56) + 4;
+    if (
+      groundFallbackState.lastOffsetKey === stripeOffset &&
+      groundFallbackState.stripeCount === stripeCount &&
+      groundFallbackState.lastX === renderWorldX &&
+      stripeCount > 0
+    ) {
       return;
     }
 
-    const stripeCount = Math.ceil(worldWidth / 56) + 4;
     for (let i = 0; i < stripeCount; i += 1) {
       const stripe = ensureGroundStripe(i);
-      const x = (i - 1) * 56 - stripeOffset;
+      const x = renderWorldX + (i - 1) * 56 - stripeOffset;
       stripe.clear();
       stripe.rect(x, groundY + 42, 34, 11).fill(0x283f52);
       visibleDisplay(stripe, true);
@@ -890,6 +926,7 @@ export function createPixiRenderer(options = {}) {
       decorState.lastSceneTexture = null;
       decorState.lastSceneOffset = Number.NaN;
       decorState.lastSceneDrawWidth = Number.NaN;
+      decorState.lastWorldX = Number.NaN;
       decorState.lastWorldWidth = Number.NaN;
       decorState.lastGroundY = Number.NaN;
       decorState.lastTextureMask = "";
@@ -918,7 +955,13 @@ export function createPixiRenderer(options = {}) {
       textureByKey.sceneLamp ? 1 : 0
     ].join("");
 
-    const effectiveWorldWidth = Math.min(visibleWorldWidth, MAX_DECOR_WORLD_WIDTH);
+    const overscan = renderOverscanForLayout(sceneState?.layoutState, visibleWorldWidth);
+    const renderWorldMinX = -overscan.left;
+    const effectiveWorldWidth = Math.min(
+      visibleWorldWidth + overscan.left + overscan.right,
+      MAX_DECOR_WORLD_WIDTH
+    );
+    const renderWorldMaxX = renderWorldMinX + effectiveWorldWidth;
     const sceneScale = groundY / scene.height;
     const sceneDrawWidth = Math.max(1, scene.width * sceneScale);
     const skyOffset = sceneState?.skyOffset || 0;
@@ -926,6 +969,7 @@ export function createPixiRenderer(options = {}) {
       decorState.lastSceneTexture === sceneTexture &&
       decorState.lastSceneOffset === skyOffset &&
       decorState.lastSceneDrawWidth === sceneDrawWidth &&
+      decorState.lastWorldX === renderWorldMinX &&
       decorState.lastWorldWidth === effectiveWorldWidth &&
       decorState.lastGroundY === groundY &&
       decorState.lastTextureMask === textureMask
@@ -933,9 +977,8 @@ export function createPixiRenderer(options = {}) {
       return;
     }
 
-    const tileIndexStart = Math.floor(skyOffset / sceneDrawWidth);
-    const wrappedOffset = ((skyOffset % sceneDrawWidth) + sceneDrawWidth) % sceneDrawWidth;
-    const tileStartX = -wrappedOffset;
+    const tileIndexStart = Math.floor((skyOffset + renderWorldMinX) / sceneDrawWidth);
+    const tileStartX = tileIndexStart * sceneDrawWidth - skyOffset;
     const tileCount = Math.ceil(effectiveWorldWidth / sceneDrawWidth) + 2;
 
     let spriteIndex = 0;
@@ -957,7 +1000,10 @@ export function createPixiRenderer(options = {}) {
         const spriteX = mirrored ? tileX + (sceneDrawWidth - item.x) : tileX + item.x;
         const minX = mirrored ? spriteX - item.w : spriteX;
         const maxX = mirrored ? spriteX : spriteX + item.w;
-        if (maxX < -DECOR_CULL_MARGIN || minX > effectiveWorldWidth + DECOR_CULL_MARGIN) {
+        if (
+          maxX < renderWorldMinX - DECOR_CULL_MARGIN ||
+          minX > renderWorldMaxX + DECOR_CULL_MARGIN
+        ) {
           hideDisplay(sprite);
           continue;
         }
@@ -980,6 +1026,7 @@ export function createPixiRenderer(options = {}) {
     decorState.lastSceneTexture = sceneTexture;
     decorState.lastSceneOffset = skyOffset;
     decorState.lastSceneDrawWidth = sceneDrawWidth;
+    decorState.lastWorldX = renderWorldMinX;
     decorState.lastWorldWidth = effectiveWorldWidth;
     decorState.lastGroundY = groundY;
     decorState.lastTextureMask = textureMask;

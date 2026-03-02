@@ -8,8 +8,9 @@ function layoutRoundPx(value) {
 
 // Landscape pacing/perf tuning: fixed gameplay window around the player.
 const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
-const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 1300;
+const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 1760;
 const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 800;
+const LANDSCAPE_WIDE_TOP_CROP_RATIO = 0.2;
 const LANDSCAPE_SPAWN_UNIT_BY_BUCKET = Object.freeze({
   landscape_short: 1120,
   landscape_regular: 1160,
@@ -164,13 +165,16 @@ function buildCameraViewWorldRect({
   wideCameraAspectCap
 }) {
   const cameraAspect = cameraAspectCapForBucket(bucket, screenAspect, wideCameraAspectCap);
-  const height = designWorldHeight;
+  const topCropRatio = bucket === "landscape_wide" ? LANDSCAPE_WIDE_TOP_CROP_RATIO : 0;
+  const height = layoutRoundPx(designWorldHeight * (1 - topCropRatio));
   const width = layoutRoundPx(height * cameraAspect);
+  const y = layoutRoundPx(designWorldHeight - height);
 
   // Endless runner composition: keep left edge anchored, reveal more space to the right.
+  // On very wide landscape, crop top horizon to gain gameplay scale.
   return {
     x: 0,
-    y: 0,
+    y,
     width,
     height
   };

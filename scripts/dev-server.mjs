@@ -54,6 +54,15 @@ function resolvePath(urlPath) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    const cleanUrl = (req.url || "/").split("?")[0].split("#")[0];
+    if (cleanUrl === "/favicon.ico") {
+      // Some browsers still probe /favicon.ico even with explicit data-URI favicon.
+      res.statusCode = 204;
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.end();
+      return;
+    }
+
     const targetPath = resolvePath(req.url || "/");
 
     if (!targetPath) {

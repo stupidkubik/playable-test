@@ -161,9 +161,17 @@ const PLAYER_COLLECT_TOP_BOOST_BY_BUCKET = Object.freeze({
   portrait_tall: 10,
   portrait_regular: 12,
   portrait_tablet: 16,
-  landscape_short: 34,
-  landscape_regular: 30,
-  landscape_wide: 26
+  landscape_short: 56,
+  landscape_regular: 52,
+  landscape_wide: 48
+});
+const PLAYER_COLLECT_SIDE_BOOST_BY_BUCKET = Object.freeze({
+  portrait_tall: 0,
+  portrait_regular: 0,
+  portrait_tablet: 2,
+  landscape_short: 10,
+  landscape_regular: 8,
+  landscape_wide: 6
 });
 const enemyBaseFrame = firstFrameOrFallback(ASSET_FRAMES.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
@@ -259,6 +267,15 @@ function playerSizeScaleForBucket(bucket) {
 
 function playerCollectTopBoostForBucket(bucket) {
   const value = PLAYER_COLLECT_TOP_BOOST_BY_BUCKET[bucket];
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  return 0;
+}
+
+function playerCollectSideBoostForBucket(bucket) {
+  const value = PLAYER_COLLECT_SIDE_BOOST_BY_BUCKET[bucket];
   if (Number.isFinite(value) && value > 0) {
     return value;
   }
@@ -624,6 +641,7 @@ function currentLogicMetrics() {
     cleanupBehindPlayer: gameplayTokens?.cleanupBehindPlayer ?? null,
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     playerCollectibleTopBoost: playerCollectTopBoostForBucket(bucket),
+    playerCollectibleSideBoost: playerCollectSideBoostForBucket(bucket),
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
 }
@@ -1822,12 +1840,13 @@ function checkCollisions() {
   const logicMetrics = currentLogicMetrics();
   const playerBox = playerHitbox(state.player, logicMetrics);
   const collectibleTopBoost = logicMetrics.playerCollectibleTopBoost ?? 0;
+  const collectibleSideBoost = logicMetrics.playerCollectibleSideBoost ?? 0;
   const collectiblePlayerBox =
-    collectibleTopBoost > 0
+    collectibleTopBoost > 0 || collectibleSideBoost > 0
       ? {
-        x: playerBox.x,
+        x: playerBox.x - collectibleSideBoost,
         y: playerBox.y - collectibleTopBoost,
-        width: playerBox.width,
+        width: playerBox.width + collectibleSideBoost * 2,
         height: playerBox.height + collectibleTopBoost
       }
       : playerBox;
