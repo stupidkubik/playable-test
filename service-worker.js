@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "runner-playable-cache";
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const ASSET_CACHE = `${CACHE_PREFIX}-assets-${CACHE_VERSION}`;
 const DOCUMENT_CACHE = `${CACHE_PREFIX}-documents-${CACHE_VERSION}`;
 const KNOWN_CACHES = new Set([ASSET_CACHE, DOCUMENT_CACHE]);
@@ -39,7 +39,14 @@ async function networkFirst(request, cacheName) {
     if (cached) {
       return cached;
     }
-    throw new Error("Network unavailable and no cached document.");
+    return new Response("Offline", {
+      status: 503,
+      statusText: "Offline",
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store"
+      }
+    });
   }
 }
 
@@ -65,7 +72,13 @@ async function staleWhileRevalidate(request, cacheName) {
     return networkResponse;
   }
 
-  throw new Error("Asset is not available in network or cache.");
+  return new Response("", {
+    status: 504,
+    statusText: "Asset Unavailable",
+    headers: {
+      "cache-control": "no-store"
+    }
+  });
 }
 
 self.addEventListener("install", (event) => {

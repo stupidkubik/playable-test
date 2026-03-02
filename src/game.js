@@ -58,6 +58,31 @@ const CTA_URL = "https://apps.apple.com/app/id6444492155";
 const stressConfig = readStressConfig();
 applyStressViewportOverride(stressConfig, { appShell, body: document.body });
 
+function readStorageFlag(key) {
+  try {
+    return globalThis.localStorage?.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function clearRuntimeServiceWorkerCaches() {
+  if (!("caches" in globalThis)) {
+    return;
+  }
+
+  try {
+    const keys = await globalThis.caches.keys();
+    await Promise.all(
+      keys
+        .filter((name) => typeof name === "string" && name.startsWith("runner-playable-cache-"))
+        .map((name) => globalThis.caches.delete(name))
+    );
+  } catch (error) {
+    console.warn("[sw] cache cleanup failed", error);
+  }
+}
+
 function registerServiceWorker() {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     return;
@@ -67,19 +92,25 @@ function registerServiceWorker() {
     return;
   }
 
-  if (stressConfig.enabled) {
-    // Stress runs must bypass stale SW caches to keep profiling data accurate.
+  const params = new URLSearchParams(window.location.search || "");
+  const swDisabledByQuery = params.get("sw") === "0";
+  const swDisabledByStorage = readStorageFlag("playable:disableSw");
+  const protocol = window.location?.protocol || "";
+  const hostname = window.location?.hostname || "";
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const shouldDisableServiceWorker = stressConfig.enabled || swDisabledByQuery || swDisabledByStorage || isLocalHost;
+
+  if (shouldDisableServiceWorker) {
+    // Keep diagnostics predictable in stress/debug and prevent local cache-related noise.
     navigator.serviceWorker
       .getRegistrations()
       .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-      .catch((error) => console.warn("[sw] unregister failed in stress mode", error));
+      .then(() => clearRuntimeServiceWorkerCaches())
+      .catch((error) => console.warn("[sw] unregister failed", error));
     return;
   }
 
-  const protocol = window.location?.protocol || "";
-  const hostname = window.location?.hostname || "";
-  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
-  const isSecureContext = protocol === "https:" || isLocalHost;
+  const isSecureContext = protocol === "https:";
 
   if (!isSecureContext) {
     return;
@@ -116,6 +147,24 @@ const playerBaseFrame = firstFrameOrFallback(
   ASSET_FRAMES.playerIdle,
   firstFrameOrFallback(ASSET_FRAMES.playerRun, { w: 128, h: 246 })
 );
+const PLAYER_BASE_WIDTH = Math.round(playerBaseFrame.w * PLAYER_CONFIG.scale);
+const PLAYER_BASE_HEIGHT = Math.round(playerBaseFrame.h * PLAYER_CONFIG.scale);
+const PLAYER_SIZE_SCALE_BY_BUCKET = Object.freeze({
+  portrait_tall: 1,
+  portrait_regular: 1,
+  portrait_tablet: 1.03,
+  landscape_short: 1.14,
+  landscape_regular: 1.12,
+  landscape_wide: 1.1
+});
+const PLAYER_COLLECT_TOP_BOOST_BY_BUCKET = Object.freeze({
+  portrait_tall: 10,
+  portrait_regular: 12,
+  portrait_tablet: 16,
+  landscape_short: 34,
+  landscape_regular: 30,
+  landscape_wide: 26
+});
 const enemyBaseFrame = firstFrameOrFallback(ASSET_FRAMES.enemyRun, { w: 174, h: 357 });
 const obstacleBaseFrame = { w: 119, h: 135 };
 const obstacleBaseScale = 0.8;
@@ -165,6 +214,7 @@ const COMBO_POPUP_CONFIG = {
   baseScale: 1,
   popScale: 1.2
 };
+const PLAYER_HURT_REACTION_MS = 650;
 const SPAWN_RUNTIME_CONFIG = {
   maxSpawnsPerFrame: 3,
   resizeCooldownMs: 220
@@ -197,6 +247,24 @@ const IMAGE_DEFERRED_KEYS = Object.freeze([
 const IMAGE_DEFERRED_KEY_SET = new Set(IMAGE_DEFERRED_KEYS);
 const AUDIO_MUSIC_KEYS = Object.freeze(["music"]);
 const AUDIO_SFX_KEYS = Object.freeze(["jump", "hit", "collect", "hurt", "step", "lose", "win"]);
+
+function playerSizeScaleForBucket(bucket) {
+  const value = PLAYER_SIZE_SCALE_BY_BUCKET[bucket];
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  return 1;
+}
+
+function playerCollectTopBoostForBucket(bucket) {
+  const value = PLAYER_COLLECT_TOP_BOOST_BY_BUCKET[bucket];
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  return 0;
+}
 
 function hasBundledAssetConstants() {
   return (
@@ -459,13 +527,15 @@ const state = {
   groundOffset: 0,
   player: {
     x: Math.round(GAME_WIDTH * PLAYER_CONFIG.xPosition),
-    width: Math.round(playerBaseFrame.w * PLAYER_CONFIG.scale),
-    height: Math.round(playerBaseFrame.h * PLAYER_CONFIG.scale),
+    width: PLAYER_BASE_WIDTH,
+    height: PLAYER_BASE_HEIGHT,
     y: 0,
     jumpStartY: 0,
     jumpProgress: 0,
     isJumping: false,
     invincibilityMs: 0,
+    hurtReactionMs: 0,
+    hurtReactionDurationMs: PLAYER_HURT_REACTION_MS,
     blinkAccumulatorMs: 0,
     blinkVisible: true,
     animationTime: 0
@@ -519,9 +589,11 @@ let activeRenderer = null;
 
 viewportManager.subscribe(
   (viewportState) => {
-    activeRenderer?.resize?.(viewportState.layoutState || viewportState);
-    syncPlayerBaseXForLayoutChange(viewportState.layoutState || null);
-    syncSpawnMetricsForLayoutChange(viewportState.layoutState || null);
+    const layoutState = viewportState.layoutState || null;
+    syncPlayerDimensionsForLayoutChange(layoutState);
+    activeRenderer?.resize?.(layoutState || viewportState);
+    syncPlayerBaseXForLayoutChange(layoutState);
+    syncSpawnMetricsForLayoutChange(layoutState);
   },
   { immediate: false }
 );
@@ -539,6 +611,7 @@ function currentLayoutState() {
 function currentLogicMetrics() {
   const layoutState = currentLayoutState();
   const gameplayTokens = layoutState?.gameplayTokens;
+  const bucket = layoutState?.bucket;
   return {
     worldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
     worldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
@@ -550,6 +623,7 @@ function currentLogicMetrics() {
     spawnAheadFromPlayer: gameplayTokens?.spawnAheadFromPlayer ?? null,
     cleanupBehindPlayer: gameplayTokens?.cleanupBehindPlayer ?? null,
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
+    playerCollectibleTopBoost: playerCollectTopBoostForBucket(bucket),
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
 }
@@ -578,6 +652,37 @@ function syncPlayerBaseXForLayoutChange(layoutState) {
   if (!Number.isFinite(state.player?.x) || Math.abs(state.player.x - nextPlayerBaseX) >= 0.5) {
     state.player.x = nextPlayerBaseX;
   }
+}
+
+function syncPlayerDimensionsForLayoutChange(layoutState) {
+  const scale = playerSizeScaleForBucket(layoutState?.bucket);
+  const nextWidth = Math.max(1, Math.round(PLAYER_BASE_WIDTH * scale));
+  const nextHeight = Math.max(1, Math.round(PLAYER_BASE_HEIGHT * scale));
+
+  if (
+    Number.isFinite(state.player?.width) &&
+    Number.isFinite(state.player?.height) &&
+    Math.abs(state.player.width - nextWidth) < 0.5 &&
+    Math.abs(state.player.height - nextHeight) < 0.5
+  ) {
+    return;
+  }
+
+  state.player.width = nextWidth;
+  state.player.height = nextHeight;
+
+  const nextGroundY = Number.isFinite(layoutState?.gameplayTokens?.runtimeGroundY)
+    ? layoutState.gameplayTokens.runtimeGroundY
+    : currentGroundY();
+
+  if (state.player.isJumping) {
+    state.player.jumpStartY = nextGroundY - state.player.height;
+    state.player.y = computeJumpY(state.player.jumpStartY, state.player.jumpProgress, currentLogicMetrics());
+    return;
+  }
+
+  state.player.y = nextGroundY - state.player.height;
+  state.player.jumpStartY = state.player.y;
 }
 
 function currentSpawnUnitWidth() {
@@ -659,6 +764,8 @@ function resetPlayerPosition() {
   state.player.jumpProgress = 0;
   state.player.isJumping = false;
   state.player.invincibilityMs = 0;
+  state.player.hurtReactionMs = 0;
+  state.player.hurtReactionDurationMs = PLAYER_HURT_REACTION_MS;
   state.player.blinkAccumulatorMs = 0;
   state.player.blinkVisible = true;
   state.player.animationTime = 0;
@@ -1592,6 +1699,10 @@ function updatePlayer(deltaSeconds, deltaMs) {
     }
   }
 
+  if (state.player.hurtReactionMs > 0) {
+    state.player.hurtReactionMs = Math.max(0, state.player.hurtReactionMs - deltaMs);
+  }
+
 }
 
 function updateEntities(deltaSeconds) {
@@ -1684,6 +1795,8 @@ function hitPlayer(sourceType = "unknown", sourceId = null) {
   }, "warn");
 
   state.player.invincibilityMs = PLAYER_CONFIG.invincibilityMs;
+  state.player.hurtReactionMs = PLAYER_HURT_REACTION_MS;
+  state.player.hurtReactionDurationMs = PLAYER_HURT_REACTION_MS;
   state.player.blinkVisible = false;
   playSound("hit");
   playSound("hurt");
@@ -1708,6 +1821,16 @@ function collectItem(item) {
 function checkCollisions() {
   const logicMetrics = currentLogicMetrics();
   const playerBox = playerHitbox(state.player, logicMetrics);
+  const collectibleTopBoost = logicMetrics.playerCollectibleTopBoost ?? 0;
+  const collectiblePlayerBox =
+    collectibleTopBoost > 0
+      ? {
+        x: playerBox.x,
+        y: playerBox.y - collectibleTopBoost,
+        width: playerBox.width,
+        height: playerBox.height + collectibleTopBoost
+      }
+      : playerBox;
 
   for (const enemy of state.enemies) {
     if (state.player.invincibilityMs > 0) {
@@ -1746,7 +1869,7 @@ function checkCollisions() {
       continue;
     }
 
-    if (collectibleIntersects(playerBox, collectible, logicMetrics)) {
+    if (collectibleIntersects(collectiblePlayerBox, collectible, logicMetrics)) {
       collectItem(collectible);
     }
   }

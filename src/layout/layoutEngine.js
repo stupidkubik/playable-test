@@ -24,9 +24,11 @@ const PLAYER_X_RATIO_BY_BUCKET = Object.freeze({
   portrait_tall: 0,
   portrait_regular: 0,
   portrait_tablet: 0.06,
-  landscape_short: 0.5,
-  landscape_regular: 0.5,
-  landscape_wide: 0.5
+  // `playerBaseX` is the player's left edge in world units.
+  // Keep landscape hero visually around 40-45% of the viewport, not centered by left edge.
+  landscape_short: 0.4,
+  landscape_regular: 0.39,
+  landscape_wide: 0.38
 });
 const LANDSCAPE_CAMERA_ASPECT_CAP_BY_BUCKET = Object.freeze({
   landscape_short: 1.78,

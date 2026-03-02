@@ -91,6 +91,8 @@ const TUTORIAL_FRONT_STYLE = Object.freeze({
 
 const MAX_RENDER_RESOLUTION = 1;
 const MAX_DECOR_WORLD_WIDTH = 2600;
+const PLAYER_DAMAGE_REACTION_DEFAULT_MS = 650;
+const PLAYER_DAMAGE_REACTION_RUN_SEQUENCE = Object.freeze([0, 1, 3, 5, 3, 1, 0]);
 
 function pixiScriptSources() {
   const protocol = globalThis.location?.protocol || "";
@@ -253,6 +255,96 @@ function frameSourceBox(frame) {
   };
 }
 
+function damageReactionProgress(player) {
+  const remaining = player?.hurtReactionMs;
+  if (!Number.isFinite(remaining) || remaining <= 0) {
+    return null;
+  }
+
+  const configuredDuration = Number.isFinite(player?.hurtReactionDurationMs)
+    ? player.hurtReactionDurationMs
+    : Number.NaN;
+  const duration =
+    configuredDuration > 0 ? configuredDuration : PLAYER_DAMAGE_REACTION_DEFAULT_MS;
+  return clamp01(1 - remaining / duration);
+}
+
+function damageReactionFrame(player, idleFrames, runFrames) {
+  const progress = damageReactionProgress(player);
+  if (progress === null) {
+    return null;
+  }
+
+  const hasRunFrames = Array.isArray(runFrames) && runFrames.length > 0;
+  const frames = hasRunFrames ? runFrames : idleFrames;
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return null;
+  }
+
+  const sequence = PLAYER_DAMAGE_REACTION_RUN_SEQUENCE;
+  const sequenceIndex = Math.min(
+    sequence.length - 1,
+    Math.max(0, Math.floor(progress * sequence.length))
+  );
+  const frameIndex = sequence[sequenceIndex] % frames.length;
+  return frames[frameIndex] || frames[0];
+}
+
+function damageReactionPose(player) {
+  const progress = damageReactionProgress(player);
+  if (progress === null) {
+    return null;
+  }
+
+  return {
+    offsetX: interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.16, value: -12 },
+        { t: 0.42, value: -6 },
+        { t: 1, value: 0 }
+      ],
+      progress
+    ),
+    offsetY: interpolateKeyframes01(
+      [
+        { t: 0, value: 0 },
+        { t: 0.2, value: -10 },
+        { t: 0.54, value: -3 },
+        { t: 1, value: 0 }
+      ],
+      progress
+    ),
+    scaleX: interpolateKeyframes01(
+      [
+        { t: 0, value: 1 },
+        { t: 0.18, value: 1.07 },
+        { t: 0.48, value: 0.99 },
+        { t: 1, value: 1 }
+      ],
+      progress
+    ),
+    scaleY: interpolateKeyframes01(
+      [
+        { t: 0, value: 1 },
+        { t: 0.18, value: 0.93 },
+        { t: 0.48, value: 1.01 },
+        { t: 1, value: 1 }
+      ],
+      progress
+    ),
+    flashBoost: interpolateKeyframes01(
+      [
+        { t: 0, value: 0.2 },
+        { t: 0.2, value: 1 },
+        { t: 0.55, value: 0.35 },
+        { t: 1, value: 0 }
+      ],
+      progress
+    )
+  };
+}
+
 function currentPlayerFrame(sceneState) {
   const idleFrames = ASSET_FRAMES.playerIdle || ASSET_FRAMES.playerRun;
   const runFrames = ASSET_FRAMES.playerRun;
@@ -265,6 +357,11 @@ function currentPlayerFrame(sceneState) {
 
   if (sceneState.mode === STATES.endWin || sceneState.mode === STATES.endLose) {
     return idleFrames[0];
+  }
+
+  const damageFrame = damageReactionFrame(player, idleFrames, runFrames);
+  if (damageFrame) {
+    return damageFrame;
   }
 
   if (player.isJumping) {
@@ -948,6 +1045,13 @@ export function createPixiRenderer(options = {}) {
     const drawY = fullY + box.sourceY * drawScale;
     const drawWidth = frame.w * drawScale;
     const drawHeight = frame.h * drawScale;
+    const damagePose = damageReactionPose(player);
+    const poseScaleX = damagePose?.scaleX ?? 1;
+    const poseScaleY = damagePose?.scaleY ?? 1;
+    const posedWidth = drawWidth * poseScaleX;
+    const posedHeight = drawHeight * poseScaleY;
+    const posedX = drawX + (drawWidth - posedWidth) * 0.5 + (damagePose?.offsetX ?? 0);
+    const posedY = drawY + (drawHeight - posedHeight) + (damagePose?.offsetY ?? 0);
     const frameTexture = frameTextureForSheet(PIXIRef, frameTextureCache, baseTexture, frame);
 
     if (!frameTexture) {
@@ -957,19 +1061,19 @@ export function createPixiRenderer(options = {}) {
     }
 
     nodes.sprite.texture = frameTexture;
-    nodes.sprite.x = drawX;
-    nodes.sprite.y = drawY;
-    nodes.sprite.scale.set(drawWidth / frame.w, drawHeight / frame.h);
+    nodes.sprite.x = posedX;
+    nodes.sprite.y = posedY;
+    nodes.sprite.scale.set(posedWidth / frame.w, posedHeight / frame.h);
     visibleDisplay(nodes.sprite, true);
 
     const damageFlashActive = player.invincibilityMs > 0 && !player.blinkVisible;
     if (damageFlashActive) {
       nodes.flash.texture = frameTexture;
-      nodes.flash.x = drawX;
-      nodes.flash.y = drawY;
-      nodes.flash.scale.set(drawWidth / frame.w, drawHeight / frame.h);
+      nodes.flash.x = posedX;
+      nodes.flash.y = posedY;
+      nodes.flash.scale.set(posedWidth / frame.w, posedHeight / frame.h);
       nodes.flash.tint = 0xff3a3a;
-      nodes.flash.alpha = 0.62;
+      nodes.flash.alpha = damagePose ? 0.54 + damagePose.flashBoost * 0.2 : 0.62;
       visibleDisplay(nodes.flash, true);
     } else {
       hideDisplay(nodes.flash);
