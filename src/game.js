@@ -23,6 +23,7 @@ import { ASSET_FRAMES } from "./assets/frames.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
 import { createUiEffects } from "./uiEffects.js";
 import { createViewportManager } from "./viewport.js";
+import { applyStressViewportOverride, createStressMode, readStressConfig } from "./stress/runtime.full.js";
 
 const appShell = document.querySelector(".app-shell");
 const canvas = document.querySelector("#game");
@@ -53,12 +54,25 @@ const footerCta = document.querySelector("#footer-cta");
 const startBtn = document.querySelector("#start-btn");
 const CTA_URL = "https://apps.apple.com/app/id6444492155";
 
+
+const stressConfig = readStressConfig();
+applyStressViewportOverride(stressConfig, { appShell, body: document.body });
+
 function registerServiceWorker() {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     return;
   }
 
   if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  if (stressConfig.enabled) {
+    // Stress runs must bypass stale SW caches to keep profiling data accurate.
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch((error) => console.warn("[sw] unregister failed in stress mode", error));
     return;
   }
 
@@ -362,13 +376,15 @@ function createPerfDebugLogger() {
       return;
     }
 
-    console.warn("[perf] slow checkSpawns()", {
+    const payload = {
       checkSpawnsMs: Number(currentFrame.checkSpawnsMs.toFixed(2)),
       spawnedTypes: currentFrame.spawnedTypes,
       counts: currentFrame.counts,
       mode: state.mode,
       distanceTraveled: Math.round(state.distanceTraveled)
-    });
+    };
+
+    console.warn("[perf] slow checkSpawns()", payload);
   }
 
   function endFrame() {
@@ -420,6 +436,8 @@ function createPerfDebugLogger() {
 }
 
 const perfDebugLogger = createPerfDebugLogger();
+const LANDSCAPE_FRAME_INTERVAL_MS = 1000 / 60;
+const LANDSCAPE_MAX_CATCHUP_STEPS = 4;
 
 const state = {
   mode: STATES.loading,
@@ -486,6 +504,17 @@ const state = {
   deferredAssetsPromise: null,
   musicPlayRetryRequested: false
 };
+
+
+const stressMode = createStressMode(stressConfig, {
+  state,
+  STATES,
+  startRun,
+  resumeFromTutorial,
+  resetWorld,
+  currentLayoutState
+});
+stressMode.installGlobals(globalThis);
 let activeRenderer = null;
 
 viewportManager.subscribe(
@@ -523,6 +552,17 @@ function currentLogicMetrics() {
     cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
     jumpHeight: PLAYER_CONFIG.jumpHeight
   };
+}
+
+function measureStressSection(sectionName, callback) {
+  if (!stressMode.enabled) {
+    return callback();
+  }
+
+  const startAt = performance.now();
+  const result = callback();
+  stressMode.recordSection(sectionName, performance.now() - startAt);
+  return result;
 }
 
 function syncPlayerBaseXForLayoutChange(layoutState) {
@@ -982,6 +1022,16 @@ async function warmDeferredAssets() {
 
 function playSound(key) {
   const sound = state.resources.audio[key];
+  const muted = stressMode.isAudioMuted();
+  stressMode.recordSoundStart("sfx", key, {
+    muted,
+    hasAudio: Boolean(sound)
+  });
+
+  if (muted) {
+    return;
+  }
+
   if (!sound) {
     return;
   }
@@ -994,6 +1044,18 @@ function playSound(key) {
 
 function playMusic() {
   const music = state.resources.audio.music;
+  const muted = stressMode.isAudioMuted();
+  stressMode.recordSoundStart("music", "music", {
+    muted,
+    hasAudio: Boolean(music),
+    pending: Boolean(state.musicPlayPending),
+    alreadyPlaying: Boolean(music && !music.paused && !music.ended)
+  });
+
+  if (muted) {
+    return;
+  }
+
   if (!music) {
     state.musicPlayRetryRequested = true;
     return;
@@ -1211,7 +1273,12 @@ function startJump() {
   playSound("jump");
 }
 
-function resumeFromTutorial() {
+function resumeFromTutorial(reason = "manual") {
+  stressMode.traceGameplayEvent("tutorial-resume", "Tutorial pause resumed", {
+    reason,
+    distanceTraveled: Number.isFinite(state.distanceTraveled) ? Number(state.distanceTraveled.toFixed(2)) : 0,
+    hp: state.hp
+  });
   state.frozenEnemyAnimationTick = null;
   state.mode = STATES.running;
   state.isRunning = true;
@@ -1240,6 +1307,11 @@ function handleLose() {
 }
 
 function triggerTutorialPause() {
+  stressMode.traceGameplayEvent("tutorial-pause", "Tutorial pause triggered", {
+    tutorialEnemyId: state.tutorialEnemyId,
+    distanceTraveled: Number.isFinite(state.distanceTraveled) ? Number(state.distanceTraveled.toFixed(2)) : 0,
+    hp: state.hp
+  }, "warn");
   state.tutorialTriggered = true;
   state.isRunning = false;
   state.mode = STATES.paused;
@@ -1384,24 +1456,60 @@ function spawnEntity(entry) {
   perfDebugLogger.addSpawn(entry.type);
 
   if (entry.type === "enemy") {
+    if (!stressMode.canSpawnEntity("enemy")) {
+      return;
+    }
     const enemy = spawnEnemy();
     if (entry.pauseForTutorial && !state.tutorialTriggered) {
       enemy.isTutorialEnemy = true;
       state.tutorialEnemyId = enemy.id;
     }
+    stressMode.spawnExtras(entry, {
+      state,
+      spawnEnemy,
+      spawnObstacle,
+      spawnCollectible,
+      spawnWarningLabel,
+      currentGroundY,
+      perfDebugLogger
+    });
     return;
   }
 
   if (entry.type === "obstacle") {
+    if (!stressMode.canSpawnEntity("obstacle")) {
+      return;
+    }
     const obstacle = spawnObstacle();
     if (entry.warningLabel) {
       spawnWarningLabel(obstacle.x, obstacle.pulseSeed);
     }
+    stressMode.spawnExtras(entry, {
+      state,
+      spawnEnemy,
+      spawnObstacle,
+      spawnCollectible,
+      spawnWarningLabel,
+      currentGroundY,
+      perfDebugLogger
+    });
     return;
   }
 
   if (entry.type === "collectible") {
+    if (!stressMode.canSpawnEntity("collectible")) {
+      return;
+    }
     spawnCollectible(entry.yOffset || 0);
+    stressMode.spawnExtras(entry, {
+      state,
+      spawnEnemy,
+      spawnObstacle,
+      spawnCollectible,
+      spawnWarningLabel,
+      currentGroundY,
+      perfDebugLogger
+    });
     return;
   }
 
@@ -1411,18 +1519,24 @@ function spawnEntity(entry) {
 }
 
 function checkSpawns() {
-  const perfStart = perfDebugLogger.enabled ? performance.now() : 0;
+  const shouldMeasure = perfDebugLogger.enabled || stressMode.enabled;
+  const perfStart = shouldMeasure ? performance.now() : 0;
   if (state.spawnResumeAtMs > 0 && performance.now() < state.spawnResumeAtMs) {
-    if (perfDebugLogger.enabled) {
-      perfDebugLogger.setCheckSpawnsMs(performance.now() - perfStart);
+    if (shouldMeasure) {
+      const checkSpawnsMs = performance.now() - perfStart;
+      if (perfDebugLogger.enabled) {
+        perfDebugLogger.setCheckSpawnsMs(checkSpawnsMs);
+      }
+      stressMode.recordSection("checkSpawns", checkSpawnsMs);
     }
     return;
   }
 
   const logicMetrics = currentLogicMetrics();
+  const frameSpawnLimit = stressMode.spawnBurstLimit(SPAWN_RUNTIME_CONFIG.maxSpawnsPerFrame);
   let spawnedThisFrame = 0;
   while (state.spawnIndex < SPAWN_SEQUENCE.length) {
-    if (spawnedThisFrame >= SPAWN_RUNTIME_CONFIG.maxSpawnsPerFrame) {
+    if (spawnedThisFrame >= frameSpawnLimit) {
       break;
     }
 
@@ -1438,8 +1552,12 @@ function checkSpawns() {
     spawnedThisFrame += 1;
   }
 
-  if (perfDebugLogger.enabled) {
-    perfDebugLogger.setCheckSpawnsMs(performance.now() - perfStart);
+  if (shouldMeasure) {
+    const checkSpawnsMs = performance.now() - perfStart;
+    if (perfDebugLogger.enabled) {
+      perfDebugLogger.setCheckSpawnsMs(checkSpawnsMs);
+    }
+    stressMode.recordSection("checkSpawns", checkSpawnsMs);
   }
 }
 
@@ -1525,17 +1643,45 @@ function checkTutorialTrigger() {
   }
 }
 
-function hitPlayer() {
+function hitPlayer(sourceType = "unknown", sourceId = null) {
+  if (stressMode.isInvincible()) {
+    return;
+  }
+
   if (state.player.invincibilityMs > 0) {
     return;
   }
 
+  const hpBefore = state.hp;
+  let didLose = false;
   resetCollectCombo({ clearPopups: true });
-  state.hp -= 1;
-  if (state.hp <= 0) {
-    handleLose();
-    return;
+  if (stressMode.hasInfiniteLives()) {
+    state.hp = ECONOMY_CONFIG.maxHp;
+  } else {
+    state.hp -= 1;
+    if (state.hp <= 0) {
+      didLose = true;
+      stressMode.traceGameplayEvent("player-hit", "Player hit processed", {
+        sourceType,
+        sourceId,
+        hpBefore,
+        hpAfter: state.hp,
+        didLose: true,
+        infiniteLives: false
+      }, "warn");
+      handleLose();
+      return;
+    }
   }
+
+  stressMode.traceGameplayEvent("player-hit", "Player hit processed", {
+    sourceType,
+    sourceId,
+    hpBefore,
+    hpAfter: state.hp,
+    didLose,
+    infiniteLives: stressMode.hasInfiniteLives()
+  }, "warn");
 
   state.player.invincibilityMs = PLAYER_CONFIG.invincibilityMs;
   state.player.blinkVisible = false;
@@ -1569,7 +1715,12 @@ function checkCollisions() {
     }
 
     if (intersects(playerBox, enemyHitbox(enemy, logicMetrics))) {
-      hitPlayer();
+      stressMode.traceGameplayEvent("collision-enemy", "Enemy collision detected", {
+        enemyId: enemy.id,
+        enemyX: Math.round(enemy.x),
+        playerX: Math.round(state.player.x)
+      }, "warn");
+      hitPlayer("enemy", enemy.id);
       break;
     }
   }
@@ -1580,7 +1731,12 @@ function checkCollisions() {
     }
 
     if (intersects(playerBox, obstacleHitbox(obstacle, logicMetrics))) {
-      hitPlayer();
+      stressMode.traceGameplayEvent("collision-obstacle", "Obstacle collision detected", {
+        obstacleId: obstacle.id,
+        obstacleX: Math.round(obstacle.x),
+        playerX: Math.round(state.player.x)
+      }, "warn");
+      hitPlayer("obstacle", obstacle.id);
       break;
     }
   }
@@ -1803,7 +1959,7 @@ function updateRunning(deltaSeconds, deltaMs) {
       (state.skyOffset + state.currentSpeed * 0.08 * deltaSeconds) % logicMetrics.worldWidth;
   }
   state.groundOffset = (state.groundOffset + state.currentSpeed * deltaSeconds) % 120;
-  state.distanceTraveled += state.currentSpeed * deltaSeconds;
+  state.distanceTraveled += state.currentSpeed * deltaSeconds * stressMode.spawnProgressScale();
 
   const now = performance.now();
   if (
@@ -1816,8 +1972,12 @@ function updateRunning(deltaSeconds, deltaMs) {
   }
 
   checkSpawns();
-  updateEntities(deltaSeconds);
-  checkTutorialTrigger();
+  measureStressSection("updateEntities", () => {
+    updateEntities(deltaSeconds);
+  });
+  measureStressSection("checkTutorialTrigger", () => {
+    checkTutorialTrigger();
+  });
 
   if (state.finishLine && !state.isDecelerating && !state.finishLine.tapeBroken) {
     const finishGeometry = currentFinishGateGeometry(state.finishLine);
@@ -1832,9 +1992,15 @@ function updateRunning(deltaSeconds, deltaMs) {
     }
   }
 
-  checkCollisions();
-  cleanupEntities();
-  updatePlayer(deltaSeconds, deltaMs);
+  measureStressSection("checkCollisions", () => {
+    checkCollisions();
+  });
+  measureStressSection("cleanupEntities", () => {
+    cleanupEntities();
+  });
+  measureStressSection("updatePlayer", () => {
+    updatePlayer(deltaSeconds, deltaMs);
+  });
 }
 
 function createRenderer() {
@@ -1865,15 +2031,23 @@ function render(elapsedSeconds) {
 }
 
 function update(deltaSeconds, deltaMs) {
-  updateConfetti(deltaMs);
-  updateComboPopups(deltaMs);
+  measureStressSection("updateConfetti", () => {
+    updateConfetti(deltaMs);
+  });
+  measureStressSection("updateComboPopups", () => {
+    updateComboPopups(deltaMs);
+  });
 
   if (state.mode === STATES.running && state.isRunning) {
-    updateRunning(deltaSeconds, deltaMs);
+    measureStressSection("updateRunning", () => {
+      updateRunning(deltaSeconds, deltaMs);
+    });
     return;
   }
 
-  updatePlayer(deltaSeconds, deltaMs);
+  measureStressSection("updatePlayerIdle", () => {
+    updatePlayer(deltaSeconds, deltaMs);
+  });
 }
 
 function gameLoop(timestamp) {
@@ -1881,21 +2055,71 @@ function gameLoop(timestamp) {
     state.lastFrameTime = timestamp;
   }
 
-  const deltaMs = Math.min(33, timestamp - state.lastFrameTime);
-  const deltaSeconds = deltaMs / 1000;
-  state.lastFrameTime = timestamp;
+  stressMode.ensureAutoProgress();
+
+  const layoutState = currentLayoutState();
+  const isLandscape = layoutState?.orientation === "landscape";
+  const bypassLandscapeCap = stressMode.shouldBypassLandscapeCap();
+  const useLandscapeCap = !bypassLandscapeCap && isLandscape;
+  let elapsedMs = timestamp - state.lastFrameTime;
+
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    elapsedMs = 0;
+  }
+
+  let updateIterations = 1;
+  let stepDeltaMs = Math.min(33, elapsedMs);
+
+  if (useLandscapeCap) {
+    updateIterations = 0;
+
+    while (elapsedMs >= LANDSCAPE_FRAME_INTERVAL_MS && updateIterations < LANDSCAPE_MAX_CATCHUP_STEPS) {
+      elapsedMs -= LANDSCAPE_FRAME_INTERVAL_MS;
+      updateIterations += 1;
+    }
+
+    if (updateIterations === 0) {
+      stressMode.recordRafSkip();
+      state.rafId = requestAnimationFrame(gameLoop);
+      return;
+    }
+
+    if (elapsedMs >= LANDSCAPE_FRAME_INTERVAL_MS) {
+      const droppedCatchupSteps = Math.floor(elapsedMs / LANDSCAPE_FRAME_INTERVAL_MS);
+      stressMode.recordRafSkip(droppedCatchupSteps);
+      elapsedMs -= droppedCatchupSteps * LANDSCAPE_FRAME_INTERVAL_MS;
+    }
+
+    state.lastFrameTime = timestamp - elapsedMs;
+    stepDeltaMs = LANDSCAPE_FRAME_INTERVAL_MS;
+  } else {
+    state.lastFrameTime = timestamp;
+  }
+
+  const rawDeltaMs = stepDeltaMs * updateIterations;
+  const deltaMs = useLandscapeCap ? rawDeltaMs : Math.min(33, rawDeltaMs);
+  const stepDeltaSeconds = stepDeltaMs / 1000;
 
   perfDebugLogger.beginFrame(timestamp, deltaMs);
 
-  const updateStart = perfDebugLogger.enabled ? performance.now() : 0;
-  update(deltaSeconds, deltaMs);
+  const shouldMeasureFrameTiming = perfDebugLogger.enabled || stressMode.enabled;
+
+  const updateStart = shouldMeasureFrameTiming ? performance.now() : 0;
+  for (let stepIndex = 0; stepIndex < updateIterations; stepIndex += 1) {
+    update(stepDeltaSeconds, stepDeltaMs);
+  }
+  const updateMs = shouldMeasureFrameTiming ? performance.now() - updateStart : 0;
   if (perfDebugLogger.enabled) {
-    perfDebugLogger.setUpdateMs(performance.now() - updateStart);
+    perfDebugLogger.setUpdateMs(updateMs);
   }
 
-  const renderStart = perfDebugLogger.enabled ? performance.now() : 0;
+  const renderStart = shouldMeasureFrameTiming ? performance.now() : 0;
   render(timestamp / 1000);
-  if (perfDebugLogger.enabled) {
+  const renderMs = shouldMeasureFrameTiming ? performance.now() - renderStart : 0;
+
+  let frameCounts = null;
+  const needsFrameCounts = perfDebugLogger.enabled || stressMode.enabled;
+  if (needsFrameCounts) {
     const frameLogicMetrics = currentLogicMetrics();
     const spawnAhead = Number.isFinite(frameLogicMetrics.spawnAheadFromPlayer)
       ? frameLogicMetrics.spawnAheadFromPlayer
@@ -1903,8 +2127,7 @@ function gameLoop(timestamp) {
     const cleanupBehind = Number.isFinite(frameLogicMetrics.cleanupBehindPlayer)
       ? frameLogicMetrics.cleanupBehindPlayer
       : (frameLogicMetrics.cleanupMarginX ?? 120);
-    perfDebugLogger.setRenderMs(performance.now() - renderStart);
-    perfDebugLogger.setCounts({
+    frameCounts = {
       enemies: state.enemies.length,
       obstacles: state.obstacles.length,
       collectibles: state.collectibles.length,
@@ -1914,9 +2137,23 @@ function gameLoop(timestamp) {
       cameraWorldWidth: Math.round(frameLogicMetrics.worldWidth),
       spawnLeadWidth: Math.round(frameLogicMetrics.spawnLeadViewportWidth),
       activeTravelWindowPx: Math.round(spawnAhead + cleanupBehind)
-    });
+    };
+  }
+
+  if (perfDebugLogger.enabled) {
+    perfDebugLogger.setRenderMs(renderMs);
+    perfDebugLogger.setCounts(frameCounts);
     perfDebugLogger.endFrame();
   }
+
+  stressMode.recordFrame({
+    timestamp,
+    deltaMs,
+    updateMs,
+    renderMs,
+    counts: frameCounts,
+    layoutState
+  });
 
   state.rafId = requestAnimationFrame(gameLoop);
 }
@@ -1941,7 +2178,7 @@ function handlePrimaryInput(event) {
   }
 
   if (state.mode === STATES.paused) {
-    resumeFromTutorial();
+    resumeFromTutorial("input");
     return;
   }
 
@@ -2005,6 +2242,7 @@ async function boot() {
       layoutState: viewportState.layoutState || null
     });
     resetWorld();
+    stressMode.onBootReady();
   } catch {
     showIntroOverlay("Assets failed to load. Reload and try again.");
   } finally {

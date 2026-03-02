@@ -15,12 +15,17 @@ const logicPath = path.resolve(rootDir, "src/gameLogic.js");
 const layoutEnginePath = path.resolve(rootDir, "src/layout/layoutEngine.js");
 const viewportPath = path.resolve(rootDir, "src/viewport.js");
 const uiEffectsPath = path.resolve(rootDir, "src/uiEffects.js");
+const stressRuntimeFullPath = path.resolve(rootDir, "src/stress/runtime.full.js");
+const stressRuntimeStubPath = path.resolve(rootDir, "src/stress/runtime.stub.js");
 const renderersDir = path.resolve(rootDir, "src/renderers");
 const gamePath = path.resolve(rootDir, "src/game.js");
 const pixiPath = path.resolve(rootDir, "node_modules/pixi.js/dist/pixi.min.js");
-const outputPath = path.resolve(distDir, "playable.html");
 const serviceWorkerPath = path.resolve(rootDir, "service-worker.js");
 const outputServiceWorkerPath = path.resolve(distDir, "service-worker.js");
+const includeStressRuntime = process.env.BUILD_INCLUDE_STRESS === "1" || process.argv.includes("--stress");
+const stressRuntimePath = includeStressRuntime ? stressRuntimeFullPath : stressRuntimeStubPath;
+const outputFileName = includeStressRuntime ? "playable.stress.html" : "playable.html";
+const outputPath = path.resolve(distDir, outputFileName);
 
 await fs.access(assetsEntryPath).catch(() => {
   throw new Error(
@@ -161,11 +166,12 @@ const [indexHtml, css, ...restSources] = await Promise.all([
   fs.readFile(layoutEnginePath, "utf8"),
   fs.readFile(viewportPath, "utf8"),
   fs.readFile(uiEffectsPath, "utf8"),
+  fs.readFile(stressRuntimePath, "utf8"),
   fs.readFile(pixiPath, "utf8"),
   ...rendererPaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(gamePath, "utf8")
 ]);
-const [logic, layoutEngine, viewport, uiEffects, pixiRuntime, ...sources] = restSources;
+const [logic, layoutEngine, viewport, uiEffects, stressRuntime, pixiRuntime, ...sources] = restSources;
 const game = sources.pop();
 const rendererSources = sources;
 
@@ -179,6 +185,7 @@ const stripLocalImports = (source) =>
     .replace(/^\s*export\s+\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
     .replace(/^\s*export\s+\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
 const cleanedUiEffects = stripLocalImports(uiEffects);
+const cleanedStressRuntime = stripLocalImports(stressRuntime);
 const cleanedLayoutEngine = stripLocalImports(layoutEngine);
 const cleanedViewport = stripLocalImports(viewport);
 const cleanedRendererSources = rendererSources.map(stripLocalImports);
@@ -195,6 +202,7 @@ const bundleParts = [
   compactJsSourceLite(cleanedLayoutEngine),
   compactJsSourceLite(cleanedViewport),
   compactJsSourceLite(cleanedUiEffects),
+  compactJsSourceLite(cleanedStressRuntime),
   ...cleanedRendererSources.map(compactJsSourceLite),
   compactJsSourceLite(cleanedGame)
 ];
@@ -226,5 +234,6 @@ const sizeKb = (sizeBytes / 1024).toFixed(1);
 const sizeMb = (stat.size / 1024 / 1024).toFixed(2);
 console.log(`Built ${outputPath}`);
 console.log(`Copied ${outputServiceWorkerPath}`);
+console.log(`[build] stress runtime: ${includeStressRuntime ? "full" : "stub"}`);
 console.log(`Bundle size: ${sizeBytes} bytes (${sizeKb} KB)`);
 console.log(`Bundle size: ${sizeMb} MB`);

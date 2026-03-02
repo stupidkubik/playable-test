@@ -22,8 +22,11 @@ npm run dev
 ## Скрипты
 
 - `npm run dev` — локальный dev-server.
+- `npm run stress` — запуск dev-server в режиме стресс-теста (с готовыми query-параметрами).
+- `npm run stress:heavy` — агрессивный профиль для воспроизведения фризов (больше спавна, больше сущностей, без 30 FPS cap в landscape).
 - `npm test` — unit-тесты (`node --test`).
 - `npm run build` — single-html сборка в `dist/playable.html`.
+- `npm run build:stress` — single-html сборка c полным stress-runtime (для профилирования в билде, выходной файл `dist/playable.stress.html`).
 - `npm run build:pages` — сборка + копирование в `docs/playable/index.html` для GitHub Pages.
 
 ## Структура проекта
@@ -35,6 +38,8 @@ npm run dev
 - `src/layout/layoutEngine.js` — layout-движок: aspect-bucket, camera/world transform, UI/gameplay tokens, CSS vars.
 - `src/renderers/pixiRenderer.js` — Pixi-рендер слоев, sprite pooling, finish/tape, combo popups, tutorial hint.
 - `src/uiEffects.js` — DOM-эффекты (end screen, countdown, flying collectibles).
+- `src/stress/runtime.full.js` — полный stress/runtime профайлер.
+- `src/stress/runtime.stub.js` — no-op stub для чистого production bundle.
 - `src/style.css` — стили fullscreen shell, HUD, overlays, footer.
 - `src/assets/*.js` — локальные ассеты (images/audio/frames), включая split-модули `imagesCritical/imagesDeferred`, `audioMusic/audioSfx`.
 - `scripts/build-single-html.mjs` — упаковка ассетов, Pixi runtime и проекта в один HTML.
@@ -180,6 +185,101 @@ CSS завязан на layout variables (`--layout-*`, `--game-viewport-*`) и 
 - `debugPerfGapMs`
 
 Логгер пишет предупреждения по slow frame и slow `checkSpawns()`.
+
+## Stress режим
+
+В `src/game.js` есть runtime stress-профайлер для поиска hot spots во время игры:
+
+- измеряет `frame/update/render` и секции (`checkSpawns`, `checkCollisions`, `cleanupEntities`, `updateEntities` и др.);
+- показывает HUD с live-метриками, hotspot и активными alerts;
+- пишет журнал stress-событий (trigger/resolved alerts, summary) в report;
+- фиксирует freeze-окна в `running`, когда `distanceTraveled` не меняется дольше `120ms`;
+- отделяет `in-run` stalls от переходных (`distance-reset`/`mode-transition`) через transition grace;
+- добавляет корреляцию `freeze -> nearbyEvents` (collision/hit/pause/resume/sound-start);
+- по завершении теста сохраняет отчет в `window.__PLAYABLE_STRESS_REPORT__`.
+
+Быстрый запуск:
+
+```bash
+npm run stress
+npm run stress:heavy
+```
+
+По сборке:
+
+- `npm run build` использует `src/stress/runtime.stub.js` (stress-код не попадает в прод-бандл);
+- `npm run build:stress` включает `src/stress/runtime.full.js` и пишет артефакт в `dist/playable.stress.html`.
+
+Скрипт выводит URL с параметрами, например:
+
+- `stress=1` — включить stress-режим;
+- `stressDurationSec=90` — длительность прогона;
+- `stressViewport=932x430` — фиксированный viewport;
+- `stressFrameBudgetMs=16.67` — целевой frame budget (по умолчанию для 60 FPS).
+
+Полезные runtime-объекты:
+
+- `window.__PLAYABLE_STRESS_REPORT__` — финальный JSON-отчёт;
+- `window.__PLAYABLE_GET_STRESS_REPORT__()` — получить отчёт в любой момент;
+- `window.__PLAYABLE_STRESS_EVENTS__` — журнал событий stress-режима (после завершения).
+
+Полезные блоки в JSON-отчете:
+
+- `report.freeze.windows` — детектированные freeze-окна;
+- `report.freeze.windows[*].classification` — `in-run` или `transition`;
+- `report.freeze.windows[*].nearbyEvents` — события рядом с freeze-окном;
+- `report.summary.freezeWindows` / `freezeTotalMs` — stalls именно в `running`;
+- `report.summary.transitionFreezeWindows` / `transitionFreezeTotalMs` — переходные stalls;
+- `report.summary.maxRunningStallMs` — максимальный stall по всем окнам.
+
+Дополнительные ENV для `npm run stress`:
+
+- `STRESS_VIEWPORT_W`, `STRESS_VIEWPORT_H`
+- `STRESS_DURATION_SEC`
+- `STRESS_FRAME_BUDGET_MS`
+- `STRESS_MUTE_AUDIO`
+- `STRESS_AUTO_RESTART`
+- `STRESS_INVINCIBLE`
+- `STRESS_INFINITE_LIVES`
+- `STRESS_PAUSE_AUTO_RESUME_SEC`
+- `STRESS_PROFILE` (`default`/`heavy`)
+- `STRESS_DOWNLOAD_REPORT` (по умолчанию `1`)
+- `STRESS_LOG` (по умолчанию `1`)
+- `STRESS_ALERTS` (по умолчанию `1`)
+- `STRESS_ALERT_FRAME_P95_MS`
+- `STRESS_ALERT_FRAME_P99_MS`
+- `STRESS_ALERT_SECTION_P95_MS`
+- `STRESS_ALERT_OVER_BUDGET_PCT`
+- `STRESS_ALERT_DROPPED_FRAMES`
+- `STRESS_LANDSCAPE_UNCAP`
+- `STRESS_SPAWN_BURST_SCALE`
+- `STRESS_SPAWN_DISTANCE_SCALE`
+- `STRESS_EXTRA_ENEMIES`
+- `STRESS_EXTRA_OBSTACLES`
+- `STRESS_EXTRA_COLLECTIBLES`
+- `STRESS_ENTITY_CAP`
+
+Текущий тестовый режим по умолчанию:
+
+- 60 FPS target;
+- столкновения включены (не invincible);
+- бесконечные жизни (`STRESS_INFINITE_LIVES=1`);
+- tutorial pause авто-возобновляется через `2s` (`STRESS_PAUSE_AUTO_RESUME_SEC=2`).
+
+Рекомендации по использованию stress-режима:
+
+- прогонять не меньше 60-90 секунд на каждом целевом формате;
+- использовать фиксированные viewport-профили (например `932x430`, `915x412`, `667x375`) для сопоставимых результатов;
+- смотреть не только `max`, но и `p95/p99` (именно они показывают системные фризы);
+- сравнивать отчеты до/после изменений на одном и том же девайсе и с теми же параметрами;
+- держать overhead профайлера низким: без детального per-frame логирования и сетевых запросов в кадре.
+
+Рекомендации по alerts:
+
+- стартовые пороги: `frame p95 <= 38ms`, `frame p99 <= 48ms`, `section p95 <= 8ms`;
+- тревожный сигнал: `overBudgetSharePct > 20%` или быстро растущий `droppedFrames`;
+- при частых alert-triggered смотреть `report.sections` и `report.logs` — это самый быстрый путь до корневой причины.
+- если обычный `stress` чистый, запускать `stress:heavy`: он лучше вскрывает проблемы рендера/спавна на длинном прогоне.
 
 ## Где менять поведение
 
