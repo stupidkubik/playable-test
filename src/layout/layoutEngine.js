@@ -10,7 +10,11 @@ function layoutRoundPx(value) {
 const LANDSCAPE_FIXED_SPAWN_UNIT_PX = 1300;
 const LANDSCAPE_FIXED_SPAWN_AHEAD_PX = 1760;
 const LANDSCAPE_FIXED_CLEANUP_BEHIND_PX = 800;
-const LANDSCAPE_WIDE_TOP_CROP_RATIO = 0.2;
+const LANDSCAPE_TOP_CROP_RATIO_BY_BUCKET = Object.freeze({
+  landscape_short: 0.14,
+  landscape_regular: 0,
+  landscape_wide: 0.2
+});
 const LANDSCAPE_SPAWN_UNIT_BY_BUCKET = Object.freeze({
   landscape_short: 1120,
   landscape_regular: 1160,
@@ -165,7 +169,7 @@ function buildCameraViewWorldRect({
   wideCameraAspectCap
 }) {
   const cameraAspect = cameraAspectCapForBucket(bucket, screenAspect, wideCameraAspectCap);
-  const topCropRatio = bucket === "landscape_wide" ? LANDSCAPE_WIDE_TOP_CROP_RATIO : 0;
+  const topCropRatio = LANDSCAPE_TOP_CROP_RATIO_BY_BUCKET[bucket] ?? 0;
   const height = layoutRoundPx(designWorldHeight * (1 - topCropRatio));
   const width = layoutRoundPx(height * cameraAspect);
   const y = layoutRoundPx(designWorldHeight - height);
