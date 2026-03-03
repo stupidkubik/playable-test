@@ -64,8 +64,15 @@ const DECOR_ITEM_VARIANTS = Object.freeze([
   DECOR_ITEMS_VARIANT_C
 ]);
 const DECOR_CULL_MARGIN = 180;
-const DECOR_SPAWN_PAD_LEFT = 320;
-const DECOR_SPAWN_PAD_RIGHT = 420;
+const DECOR_SPAWN_PAD_DEFAULT = Object.freeze({ left: 260, right: 340 });
+const DECOR_SPAWN_PAD_BY_BUCKET = Object.freeze({
+  landscape_short: Object.freeze({ left: 100, right: 160 }),
+  landscape_regular: Object.freeze({ left: 180, right: 260 }),
+  landscape_wide: Object.freeze({ left: 140, right: 220 }),
+  portrait_tall: Object.freeze({ left: 160, right: 220 }),
+  portrait_regular: Object.freeze({ left: 170, right: 240 }),
+  portrait_tablet: Object.freeze({ left: 190, right: 270 })
+});
 
 const WARNING_BADGE_BASE_W = 166;
 const WARNING_BADGE_BASE_H = 52;
@@ -301,6 +308,14 @@ function renderOverscanForLayout(layoutState, worldWidth) {
   };
 }
 
+function decorSpawnPadForLayout(layoutState) {
+  if (!layoutState) {
+    return DECOR_SPAWN_PAD_DEFAULT;
+  }
+
+  return DECOR_SPAWN_PAD_BY_BUCKET[layoutState.bucket] || DECOR_SPAWN_PAD_DEFAULT;
+}
+
 function damageReactionProgress(player) {
   const remaining = player?.hurtReactionMs;
   if (!Number.isFinite(remaining) || remaining <= 0) {
@@ -501,13 +516,13 @@ function releasePoolUnused(pool, onRelease) {
 }
 
 function hideDisplay(node) {
-  if (node?.visible !== undefined) {
+  if (node?.visible !== undefined && node.visible) {
     node.visible = false;
   }
 }
 
 function visibleDisplay(node, value = true) {
-  if (node?.visible !== undefined) {
+  if (node?.visible !== undefined && node.visible !== value) {
     node.visible = value;
   }
 }
@@ -562,6 +577,23 @@ export function createPixiRenderer(options = {}) {
   const decorState = {
     sprites: [],
     visibleSpriteCount: 0,
+    textureByKey: Object.seal({
+      sceneTreeLeft: null,
+      sceneTreeRight: null,
+      sceneBushLarge: null,
+      sceneBushMedium: null,
+      sceneBushSmall: null,
+      sceneLamp: null
+    }),
+    sourceImages: Object.seal({
+      sceneTreeLeft: null,
+      sceneTreeRight: null,
+      sceneBushLarge: null,
+      sceneBushMedium: null,
+      sceneBushSmall: null,
+      sceneLamp: null
+    }),
+    textureMask: "000000",
     lastSceneTexture: null,
     lastSceneOffset: Number.NaN,
     lastSceneDrawWidth: Number.NaN,
@@ -955,7 +987,7 @@ export function createPixiRenderer(options = {}) {
     return sprite;
   }
 
-  function syncDecorLayer(sceneState, visibleWorldWidth, groundY) {
+  function syncDecorLayer(sceneState, visibleWorldWidth, groundY, layoutState = null) {
     const images = sceneState?.resources?.images;
     const scene = images?.sceneBackground;
     if (!scene || !scene.height) {
@@ -980,31 +1012,50 @@ export function createPixiRenderer(options = {}) {
       return;
     }
 
-    const textureByKey = {
-      sceneTreeLeft: textureForImage(PIXIRef, textureCache, images.sceneTreeLeft),
-      sceneTreeRight: textureForImage(PIXIRef, textureCache, images.sceneTreeRight),
-      sceneBushLarge: textureForImage(PIXIRef, textureCache, images.sceneBushLarge),
-      sceneBushMedium: textureForImage(PIXIRef, textureCache, images.sceneBushMedium),
-      sceneBushSmall: textureForImage(PIXIRef, textureCache, images.sceneBushSmall),
-      sceneLamp: textureForImage(PIXIRef, textureCache, images.sceneLamp)
-    };
-    const textureMask = [
-      textureByKey.sceneTreeLeft ? 1 : 0,
-      textureByKey.sceneTreeRight ? 1 : 0,
-      textureByKey.sceneBushLarge ? 1 : 0,
-      textureByKey.sceneBushMedium ? 1 : 0,
-      textureByKey.sceneBushSmall ? 1 : 0,
-      textureByKey.sceneLamp ? 1 : 0
-    ].join("");
+    const sourceImages = decorState.sourceImages;
+    const textureByKey = decorState.textureByKey;
+    if (
+      sourceImages.sceneTreeLeft !== images.sceneTreeLeft ||
+      sourceImages.sceneTreeRight !== images.sceneTreeRight ||
+      sourceImages.sceneBushLarge !== images.sceneBushLarge ||
+      sourceImages.sceneBushMedium !== images.sceneBushMedium ||
+      sourceImages.sceneBushSmall !== images.sceneBushSmall ||
+      sourceImages.sceneLamp !== images.sceneLamp
+    ) {
+      sourceImages.sceneTreeLeft = images.sceneTreeLeft;
+      sourceImages.sceneTreeRight = images.sceneTreeRight;
+      sourceImages.sceneBushLarge = images.sceneBushLarge;
+      sourceImages.sceneBushMedium = images.sceneBushMedium;
+      sourceImages.sceneBushSmall = images.sceneBushSmall;
+      sourceImages.sceneLamp = images.sceneLamp;
+
+      textureByKey.sceneTreeLeft = textureForImage(PIXIRef, textureCache, sourceImages.sceneTreeLeft);
+      textureByKey.sceneTreeRight = textureForImage(PIXIRef, textureCache, sourceImages.sceneTreeRight);
+      textureByKey.sceneBushLarge = textureForImage(PIXIRef, textureCache, sourceImages.sceneBushLarge);
+      textureByKey.sceneBushMedium = textureForImage(PIXIRef, textureCache, sourceImages.sceneBushMedium);
+      textureByKey.sceneBushSmall = textureForImage(PIXIRef, textureCache, sourceImages.sceneBushSmall);
+      textureByKey.sceneLamp = textureForImage(PIXIRef, textureCache, sourceImages.sceneLamp);
+
+      decorState.textureMask = [
+        textureByKey.sceneTreeLeft ? 1 : 0,
+        textureByKey.sceneTreeRight ? 1 : 0,
+        textureByKey.sceneBushLarge ? 1 : 0,
+        textureByKey.sceneBushMedium ? 1 : 0,
+        textureByKey.sceneBushSmall ? 1 : 0,
+        textureByKey.sceneLamp ? 1 : 0
+      ].join("");
+    }
+    const textureMask = decorState.textureMask;
 
     const overscan = renderOverscanForLayout(sceneState?.layoutState, visibleWorldWidth);
-    const renderWorldMinX = -overscan.left - DECOR_SPAWN_PAD_LEFT;
+    const decorSpawnPad = decorSpawnPadForLayout(layoutState || sceneState?.layoutState);
+    const renderWorldMinX = -overscan.left - decorSpawnPad.left;
     const effectiveWorldWidth = Math.min(
       visibleWorldWidth +
         overscan.left +
         overscan.right +
-        DECOR_SPAWN_PAD_LEFT +
-        DECOR_SPAWN_PAD_RIGHT,
+        decorSpawnPad.left +
+        decorSpawnPad.right,
       MAX_DECOR_WORLD_WIDTH
     );
     const renderWorldMaxX = renderWorldMinX + effectiveWorldWidth;
@@ -1025,7 +1076,7 @@ export function createPixiRenderer(options = {}) {
 
     const tileIndexStart = Math.floor((skyOffset + renderWorldMinX) / sceneDrawWidth) - 1;
     const tileStartX = tileIndexStart * sceneDrawWidth - skyOffset;
-    const tileCount = Math.ceil(effectiveWorldWidth / sceneDrawWidth) + 3;
+    const tileCount = Math.ceil(effectiveWorldWidth / sceneDrawWidth) + 2;
 
     let spriteIndex = 0;
     for (let i = 0; i < tileCount; i += 1) {
@@ -1059,10 +1110,16 @@ export function createPixiRenderer(options = {}) {
 
         const scaleX = item.w / texture.width;
         const scaleY = item.h / texture.height;
-        sprite.texture = texture;
+        if (sprite.texture !== texture) {
+          sprite.texture = texture;
+        }
         sprite.x = spriteX;
-        sprite.y = item.y;
-        sprite.scale.set(scaleX, scaleY);
+        if (sprite.y !== item.y) {
+          sprite.y = item.y;
+        }
+        if (sprite.scale.x !== scaleX || sprite.scale.y !== scaleY) {
+          sprite.scale.set(scaleX, scaleY);
+        }
         visibleDisplay(sprite, true);
       }
     }
@@ -2228,7 +2285,7 @@ export function createPixiRenderer(options = {}) {
         worldMetrics.worldHeight,
         worldMetrics.worldY
       );
-      syncDecorLayer(sceneState, worldMetrics.worldWidth, groundY);
+      syncDecorLayer(sceneState, worldMetrics.worldWidth, groundY, layoutState);
       syncGroundLayer(sceneState, worldMetrics.worldWidth, groundY, worldMetrics.worldHeight);
 
       const elapsedSeconds = frame?.elapsedSeconds ?? 0;

@@ -124,20 +124,29 @@ body {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
+.flying-collectible-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 500;
+  contain: layout style paint;
+}
+
 .flying-collectible {
   position: fixed;
   width: 40px;
   height: 40px;
   pointer-events: none;
-  z-index: 500;
+  z-index: 0;
   transform: translate(-50%, -50%);
+  will-change: transform, opacity;
 }
 
 .flying-collectible img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  animation: spin-collectible var(--fly-duration, 0.5s) linear forwards;
+  animation: spin-collectible 0.4s linear forwards;
 }
 
 @keyframes spin-collectible {
@@ -515,6 +524,9 @@ canvas {
   height: 60vmin;
   max-width: 400px;
   max-height: 400px;
+}
+
+.fail-image.animate-fail-in {
   animation: fail-scale-in 0.8s ease-out forwards;
 }
 

@@ -1093,6 +1093,26 @@ function applyLoadedImageBindings() {
   }
 }
 
+function prewarmUiAssets({ flyingPoolSize = 14 } = {}) {
+  const images = [
+    state.resources.images.collectibleIcon,
+    state.resources.images.collectiblePaypalCard,
+    state.resources.images.paypalCardCollectible,
+    state.resources.images.hudCounter,
+    state.resources.images.failBanner,
+    state.resources.images.paypalCard,
+    state.resources.images.lightsEffect,
+    state.resources.images.tutorialHand,
+    state.resources.images.backdropPortrait,
+    state.resources.images.backdropLandscape
+  ].filter(Boolean);
+
+  return uiEffects.prewarm({
+    images,
+    flyingPoolSize
+  });
+}
+
 function waitForAudioReady(audio, timeoutMs = 1500) {
   if (!audio) {
     return Promise.resolve(false);
@@ -1183,12 +1203,14 @@ async function loadResources() {
   Object.assign(state.resources.images, criticalImages);
   normalizeImageAliases();
   applyLoadedImageBindings();
+  await prewarmUiAssets({ flyingPoolSize: 14 });
 
   if (!state.deferredAssetsPromise) {
     state.deferredAssetsPromise = warmDeferredAssets().catch((error) => {
       console.warn("[assets] deferred preload failed", error);
     });
   }
+  await state.deferredAssetsPromise;
 }
 
 async function warmDeferredAssets() {
@@ -1207,6 +1229,7 @@ async function warmDeferredAssets() {
     Object.assign(state.resources.images, deferredImages);
     normalizeImageAliases();
     applyLoadedImageBindings();
+    await prewarmUiAssets({ flyingPoolSize: 18 });
   }
 }
 
