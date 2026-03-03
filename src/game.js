@@ -257,6 +257,8 @@ const AUDIO_MUSIC_KEYS = Object.freeze(["music"]);
 const AUDIO_SFX_KEYS = Object.freeze(["jump", "hit", "collect", "hurt", "step", "lose", "win"]);
 const AUDIO_RELOAD_MAX_ATTEMPTS = 2;
 const AUDIO_RELOAD_COOLDOWN_MS = 1000;
+const IMAGE_LOAD_TIMEOUT_MS = 8000;
+const DEFERRED_BOOT_WAIT_BUDGET_MS = 2200;
 
 function playerSizeScaleForBucket(bucket) {
   const value = PLAYER_SIZE_SCALE_BY_BUCKET[bucket];
@@ -838,13 +840,38 @@ const uiEffects = createUiEffects({
   }
 });
 
-function createImageFromSource(source) {
+function createImageFromSource(source, timeoutMs = IMAGE_LOAD_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
-    image.onload = () => resolve(image);
-    image.onerror = reject;
+    let settled = false;
+
+    const finish = (ok, error = null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      image.onload = null;
+      image.onerror = null;
+      clearTimeout(timeoutId);
+      if (ok) {
+        resolve(image);
+      } else {
+        reject(error || new Error("Image failed to load."));
+      }
+    };
+
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false, new Error("Image failed to load."));
+    const timeoutId = setTimeout(
+      () => finish(false, new Error(`Image load timed out after ${timeoutMs}ms.`)),
+      timeoutMs
+    );
     image.src = source;
+
+    if (image.complete && image.naturalWidth > 0) {
+      finish(true);
+    }
   });
 }
 
@@ -907,14 +934,14 @@ async function createImage(source) {
   const normalizedSource = normalizeAssetSource(source);
 
   try {
-    return await createImageFromSource(normalizedSource);
+    return await createImageFromSource(normalizedSource, IMAGE_LOAD_TIMEOUT_MS);
   } catch (firstError) {
     if (typeof normalizedSource === "string" && normalizedSource.startsWith("data:")) {
       try {
         const response = await fetch(normalizedSource);
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
-        const image = await createImageFromSource(objectUrl);
+        const image = await createImageFromSource(objectUrl, IMAGE_LOAD_TIMEOUT_MS);
         state.objectUrlPool.push(objectUrl);
         return image;
       } catch {
@@ -1113,6 +1140,30 @@ function prewarmUiAssets({ flyingPoolSize = 14 } = {}) {
   });
 }
 
+async function waitForDeferredAssetsDuringBoot() {
+  if (!state.deferredAssetsPromise) {
+    return;
+  }
+
+  let timeoutId = null;
+  const timedOut = await Promise.race([
+    state.deferredAssetsPromise.then(() => false),
+    new Promise((resolve) => {
+      timeoutId = setTimeout(() => resolve(true), DEFERRED_BOOT_WAIT_BUDGET_MS);
+    })
+  ]);
+
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+  }
+
+  if (timedOut) {
+    console.warn(
+      `[assets] deferred preload exceeded ${DEFERRED_BOOT_WAIT_BUDGET_MS}ms boot budget; continuing startup`
+    );
+  }
+}
+
 function waitForAudioReady(audio, timeoutMs = 1500) {
   if (!audio) {
     return Promise.resolve(false);
@@ -1210,7 +1261,7 @@ async function loadResources() {
       console.warn("[assets] deferred preload failed", error);
     });
   }
-  await state.deferredAssetsPromise;
+  await waitForDeferredAssetsDuringBoot();
 }
 
 async function warmDeferredAssets() {

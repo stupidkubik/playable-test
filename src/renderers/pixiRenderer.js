@@ -797,8 +797,8 @@ export function createPixiRenderer(options = {}) {
     return sprite;
   }
 
-  function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight, worldY = 0) {
-    const overscan = renderOverscanForLayout(sceneState?.layoutState, worldWidth);
+  function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight, worldY = 0, layoutState = null) {
+    const overscan = renderOverscanForLayout(layoutState || sceneState?.layoutState, worldWidth);
     const renderWorldX = -overscan.left;
     const renderWorldWidth = Math.min(worldWidth + overscan.left + overscan.right, MAX_DECOR_WORLD_WIDTH);
     const scene = sceneState?.resources?.images?.sceneBackground;
@@ -918,8 +918,8 @@ export function createPixiRenderer(options = {}) {
     return stripe;
   }
 
-  function syncGroundLayer(sceneState, worldWidth, groundY, worldHeight) {
-    const overscan = renderOverscanForLayout(sceneState?.layoutState, worldWidth);
+  function syncGroundLayer(sceneState, worldWidth, groundY, worldHeight, layoutState = null) {
+    const overscan = renderOverscanForLayout(layoutState || sceneState?.layoutState, worldWidth);
     const renderWorldX = -overscan.left;
     const renderWorldWidth = Math.min(worldWidth + overscan.left + overscan.right, MAX_DECOR_WORLD_WIDTH);
 
@@ -1047,7 +1047,7 @@ export function createPixiRenderer(options = {}) {
     }
     const textureMask = decorState.textureMask;
 
-    const overscan = renderOverscanForLayout(sceneState?.layoutState, visibleWorldWidth);
+    const overscan = renderOverscanForLayout(layoutState || sceneState?.layoutState, visibleWorldWidth);
     const decorSpawnPad = decorSpawnPadForLayout(layoutState || sceneState?.layoutState);
     const renderWorldMinX = -overscan.left - decorSpawnPad.left;
     const effectiveWorldWidth = Math.min(
@@ -2283,10 +2283,11 @@ export function createPixiRenderer(options = {}) {
         worldMetrics.worldWidth,
         groundY,
         worldMetrics.worldHeight,
-        worldMetrics.worldY
+        worldMetrics.worldY,
+        layoutState
       );
       syncDecorLayer(sceneState, worldMetrics.worldWidth, groundY, layoutState);
-      syncGroundLayer(sceneState, worldMetrics.worldWidth, groundY, worldMetrics.worldHeight);
+      syncGroundLayer(sceneState, worldMetrics.worldWidth, groundY, worldMetrics.worldHeight, layoutState);
 
       const elapsedSeconds = frame?.elapsedSeconds ?? 0;
       syncCollectiblesLayer(sceneState, elapsedSeconds);
