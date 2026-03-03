@@ -517,6 +517,7 @@ export function createPixiRenderer(options = {}) {
     lastSceneOffset: Number.NaN,
     lastSceneDrawWidth: Number.NaN,
     lastSceneWorldX: Number.NaN,
+    lastSceneWorldY: Number.NaN,
     lastSceneWorldWidth: Number.NaN,
     lastSceneWorldHeight: Number.NaN,
     lastSceneGroundY: Number.NaN
@@ -728,7 +729,7 @@ export function createPixiRenderer(options = {}) {
     return sprite;
   }
 
-  function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight) {
+  function syncSkyLayer(sceneState, worldWidth, groundY, worldHeight, worldY = 0) {
     const overscan = renderOverscanForLayout(sceneState?.layoutState, worldWidth);
     const renderWorldX = -overscan.left;
     const renderWorldWidth = Math.min(worldWidth + overscan.left + overscan.right, MAX_DECOR_WORLD_WIDTH);
@@ -761,6 +762,7 @@ export function createPixiRenderer(options = {}) {
       skyState.lastSceneOffset = Number.NaN;
       skyState.lastSceneDrawWidth = Number.NaN;
       skyState.lastSceneWorldX = Number.NaN;
+      skyState.lastSceneWorldY = Number.NaN;
       skyState.lastSceneWorldWidth = Number.NaN;
       skyState.lastSceneWorldHeight = Number.NaN;
       skyState.lastSceneGroundY = Number.NaN;
@@ -772,15 +774,18 @@ export function createPixiRenderer(options = {}) {
       hideDisplay(skyState.fallbackRect);
     }
 
-    const scale = worldHeight / scene.height;
+    const sceneWorldY = Math.max(0, worldY);
+    const sceneWorldHeight = Math.max(1, sceneWorldY + worldHeight);
+    const scale = sceneWorldHeight / scene.height;
     const drawWidth = Math.max(1, scene.width * scale);
     if (
       skyState.lastSceneTexture === sceneTexture &&
       skyState.lastSceneOffset === skyOffset &&
       skyState.lastSceneDrawWidth === drawWidth &&
       skyState.lastSceneWorldX === renderWorldX &&
+      skyState.lastSceneWorldY === sceneWorldY &&
       skyState.lastSceneWorldWidth === renderWorldWidth &&
-      skyState.lastSceneWorldHeight === worldHeight &&
+      skyState.lastSceneWorldHeight === sceneWorldHeight &&
       skyState.lastSceneGroundY === groundY
     ) {
       return;
@@ -810,8 +815,9 @@ export function createPixiRenderer(options = {}) {
     skyState.lastSceneOffset = skyOffset;
     skyState.lastSceneDrawWidth = drawWidth;
     skyState.lastSceneWorldX = renderWorldX;
+    skyState.lastSceneWorldY = sceneWorldY;
     skyState.lastSceneWorldWidth = renderWorldWidth;
-    skyState.lastSceneWorldHeight = worldHeight;
+    skyState.lastSceneWorldHeight = sceneWorldHeight;
     skyState.lastSceneGroundY = groundY;
   }
 
@@ -2172,7 +2178,13 @@ export function createPixiRenderer(options = {}) {
 
       syncWorldRootTransform(frame);
 
-      syncSkyLayer(sceneState, worldMetrics.worldWidth, groundY, worldMetrics.worldHeight);
+      syncSkyLayer(
+        sceneState,
+        worldMetrics.worldWidth,
+        groundY,
+        worldMetrics.worldHeight,
+        worldMetrics.worldY
+      );
       syncDecorLayer(sceneState, worldMetrics.worldWidth, groundY);
       syncGroundLayer(sceneState, worldMetrics.worldWidth, groundY, worldMetrics.worldHeight);
 
