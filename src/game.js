@@ -21,6 +21,7 @@ import {
 } from "./gameLogic.js";
 import { ASSET_FRAMES } from "./assets/frames.js";
 import { createPixiRenderer } from "./renderers/pixiRenderer.js";
+import { createClickOutHandler } from "./clickOut.js";
 import { createUiEffects } from "./uiEffects.js";
 import { createViewportManager } from "./viewport.js";
 import { applyStressViewportOverride, createStressMode, readStressConfig } from "./stress/runtime.full.js";
@@ -53,6 +54,7 @@ const footerCta = document.querySelector("#footer-cta");
 
 const startBtn = document.querySelector("#start-btn");
 const CTA_URL = "https://apps.apple.com/app/id6444492155";
+const openStore = createClickOutHandler({ fallbackUrl: CTA_URL });
 
 
 const stressConfig = readStressConfig();
@@ -2498,11 +2500,11 @@ startBtn.addEventListener("click", () => {
 });
 
 ctaButton?.addEventListener("click", () => {
-  window.open(CTA_URL, "_blank", "noopener,noreferrer");
+  openStore();
 });
 
 footerCta?.addEventListener("click", () => {
-  window.open(CTA_URL, "_blank", "noopener,noreferrer");
+  openStore();
 });
 
 canvas.addEventListener("pointerdown", handlePrimaryInput, { passive: false });
