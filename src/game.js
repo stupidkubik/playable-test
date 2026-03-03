@@ -255,6 +255,8 @@ const IMAGE_DEFERRED_KEYS = Object.freeze([
 const IMAGE_DEFERRED_KEY_SET = new Set(IMAGE_DEFERRED_KEYS);
 const AUDIO_MUSIC_KEYS = Object.freeze(["music"]);
 const AUDIO_SFX_KEYS = Object.freeze(["jump", "hit", "collect", "hurt", "step", "lose", "win"]);
+const AUDIO_RELOAD_MAX_ATTEMPTS = 2;
+const AUDIO_RELOAD_COOLDOWN_MS = 1000;
 
 function playerSizeScaleForBucket(bucket) {
   const value = PLAYER_SIZE_SCALE_BY_BUCKET[bucket];
@@ -930,6 +932,9 @@ function createAudio(source, volume, loop = false) {
   audio.preload = "auto";
   audio.volume = volume;
   audio.loop = loop;
+  audio.__playableBaseSource = normalizedSource;
+  audio.__playableReloadAttempts = 0;
+  audio.__playableLastReloadAt = 0;
   return audio;
 }
 
@@ -940,6 +945,64 @@ function createAudioMap(assetMap) {
       createAudio(value.url, value.volume, value.loop || false)
     ])
   );
+}
+
+function buildAudioReloadSource(source, attempt) {
+  try {
+    const nextUrl = new URL(source, globalThis.location?.href);
+    nextUrl.searchParams.set("retryAudio", String(attempt));
+    return nextUrl.toString();
+  } catch {
+    const separator = source.includes("?") ? "&" : "?";
+    return `${source}${separator}retryAudio=${attempt}`;
+  }
+}
+
+function reloadFailedAudio(audio, { force = false } = {}) {
+  if (!audio) {
+    return false;
+  }
+
+  if (!force && !audio.error) {
+    return false;
+  }
+
+  const baseSource =
+    (typeof audio.__playableBaseSource === "string" && audio.__playableBaseSource) ||
+    audio.currentSrc ||
+    audio.src;
+
+  if (typeof baseSource !== "string" || baseSource.length === 0) {
+    return false;
+  }
+
+  if (baseSource.startsWith("data:") || baseSource.startsWith("blob:")) {
+    return false;
+  }
+
+  const attempts = Number(audio.__playableReloadAttempts || 0);
+  if (attempts >= AUDIO_RELOAD_MAX_ATTEMPTS) {
+    return false;
+  }
+
+  const now = Date.now();
+  const lastReloadAt = Number(audio.__playableLastReloadAt || 0);
+  if (!force && now - lastReloadAt < AUDIO_RELOAD_COOLDOWN_MS) {
+    return false;
+  }
+
+  const nextAttempt = attempts + 1;
+  const nextSource = buildAudioReloadSource(baseSource, nextAttempt);
+  audio.__playableReloadAttempts = nextAttempt;
+  audio.__playableLastReloadAt = now;
+
+  try {
+    audio.src = nextSource;
+    audio.load();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadImageElements(assetMap) {
@@ -1032,17 +1095,17 @@ function applyLoadedImageBindings() {
 
 function waitForAudioReady(audio, timeoutMs = 1500) {
   if (!audio) {
-    return Promise.resolve();
+    return Promise.resolve(false);
   }
 
   // HAVE_CURRENT_DATA (2) is enough to begin playback in most browsers.
   if (audio.readyState >= 2) {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   return new Promise((resolve) => {
     let settled = false;
-    const finish = () => {
+    const finish = (ready) => {
       if (settled) {
         return;
       }
@@ -1051,11 +1114,11 @@ function waitForAudioReady(audio, timeoutMs = 1500) {
       audio.removeEventListener("loadeddata", onReady);
       audio.removeEventListener("error", onError);
       clearTimeout(timer);
-      resolve();
+      resolve(Boolean(ready || audio.readyState >= 2));
     };
-    const onReady = () => finish();
-    const onError = () => finish();
-    const timer = setTimeout(finish, timeoutMs);
+    const onReady = () => finish(true);
+    const onError = () => finish(false);
+    const timer = setTimeout(() => finish(audio.readyState >= 2), timeoutMs);
 
     audio.addEventListener("canplay", onReady, { once: true });
     audio.addEventListener("loadeddata", onReady, { once: true });
@@ -1064,7 +1127,7 @@ function waitForAudioReady(audio, timeoutMs = 1500) {
     try {
       audio.load();
     } catch {
-      finish();
+      finish(audio.readyState >= 2);
     }
   });
 }
@@ -1102,8 +1165,10 @@ async function loadResources() {
       const music = state.resources.audio.music;
       state.audioWarmup.musicReady = Boolean(music && music.readyState >= 2);
       if (music) {
-        await waitForAudioReady(music);
-        state.audioWarmup.musicReady = true;
+        state.audioWarmup.musicReady = await waitForAudioReady(music);
+        if (!state.audioWarmup.musicReady && reloadFailedAudio(music, { force: true })) {
+          state.audioWarmup.musicReady = await waitForAudioReady(music, 2000);
+        }
         if (state.musicPlayRetryRequested) {
           state.musicPlayRetryRequested = false;
           playMusic();
@@ -1161,6 +1226,7 @@ function playSound(key) {
     return;
   }
 
+  reloadFailedAudio(sound);
   sound.currentTime = 0;
   sound.play().catch(() => {
     // Browser autoplay may block audio until first interaction.
@@ -1185,6 +1251,8 @@ function playMusic() {
     state.musicPlayRetryRequested = true;
     return;
   }
+
+  reloadFailedAudio(music);
 
   if (state.musicPlayPending) {
     return;

@@ -1,8 +1,9 @@
 const CACHE_PREFIX = "runner-playable-cache";
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const ASSET_CACHE = `${CACHE_PREFIX}-assets-${CACHE_VERSION}`;
 const DOCUMENT_CACHE = `${CACHE_PREFIX}-documents-${CACHE_VERSION}`;
 const KNOWN_CACHES = new Set([ASSET_CACHE, DOCUMENT_CACHE]);
+const AUDIO_EXTENSIONS = [".mp3", ".ogg", ".wav", ".m4a"];
 
 function isSameOrigin(requestUrl) {
   return requestUrl.origin === self.location.origin;
@@ -12,13 +13,28 @@ function isDocumentRequest(request) {
   return request.mode === "navigate" || request.destination === "document";
 }
 
+function isAudioRequest(request, url) {
+  if (request.destination === "audio") {
+    return true;
+  }
+
+  const lowerPath = url.pathname.toLowerCase();
+  return AUDIO_EXTENSIONS.some((ext) => lowerPath.endsWith(ext));
+}
+
 function isAssetRequest(request, url) {
   if (url.pathname.endsWith("/service-worker.js")) {
     return false;
   }
 
+  if (isAudioRequest(request, url)) {
+    // Audio preload can use range-like requests and is sensitive to transient fetch failures.
+    // Let the browser handle audio networking/cache directly.
+    return false;
+  }
+
   const destination = request.destination;
-  if (["image", "audio", "script", "style", "font"].includes(destination)) {
+  if (["image", "script", "style", "font"].includes(destination)) {
     return true;
   }
 
