@@ -19,42 +19,53 @@ const LAYER_NAMES = Object.freeze([
   "tutorialHint"
 ]);
 
-const DECOR_LAYOUT_BASE_WIDTH = 720;
 const DECOR_ITEMS_VARIANT_A = Object.freeze([
-  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 1100, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 600, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH - 400, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH - 600, y: 535, w: 165, h: 165 }),
-  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH - 450, y: 530, w: 220, h: 180 }),
-  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 40, y: 530, w: 148, h: 176 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 200, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneTreeRight", x: DECOR_LAYOUT_BASE_WIDTH + 400, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 300, y: 530, w: 220, h: 180 }),
-  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 560, y: 530, w: 148, h: 172 }),
-  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH + 900, y: 535, w: 165, h: 165 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 1200, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 1400, y: 530, w: 220, h: 180 })
+  Object.freeze({ key: "sceneTreeLeft", x: 60, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeRight", x: 420, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeLeft", x: 1160, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeRight", x: 1760, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneLamp", x: 340, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushSmall", x: 620, y: 535, w: 165, h: 165 }),
+  Object.freeze({ key: "sceneBushLarge", x: 900, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushMedium", x: 1240, y: 530, w: 148, h: 176 }),
+  Object.freeze({ key: "sceneLamp", x: 1500, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushLarge", x: 1820, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushMedium", x: 2140, y: 530, w: 148, h: 172 })
 ]);
 const DECOR_ITEMS_VARIANT_B = Object.freeze([
-  Object.freeze({ key: "sceneTreeRight", x: DECOR_LAYOUT_BASE_WIDTH - 1040, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH - 700, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH - 790, y: 528, w: 150, h: 176 }),
-  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH - 560, y: 530, w: 220, h: 180 }),
-  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 250, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 110, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH + 20, y: 535, w: 165, h: 165 }),
-  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 250, y: 530, w: 148, h: 172 }),
-  Object.freeze({ key: "sceneTreeRight", x: DECOR_LAYOUT_BASE_WIDTH + 520, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 460, y: 530, w: 220, h: 180 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 940, y: 0, w: 200, h: 700 }),
-  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH + 1020, y: 535, w: 165, h: 165 }),
-  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH + 1330, y: -40, w: 1000, h: 740 }),
-  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 1390, y: 530, w: 148, h: 172 }),
-  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 1600, y: 0, w: 200, h: 700 })
+  Object.freeze({ key: "sceneTreeLeft", x: 160, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeRight", x: 620, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeLeft", x: 1320, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeRight", x: 1860, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneBushMedium", x: 420, y: 530, w: 148, h: 176 }),
+  Object.freeze({ key: "sceneLamp", x: 760, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushLarge", x: 1080, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushSmall", x: 1380, y: 535, w: 165, h: 165 }),
+  Object.freeze({ key: "sceneLamp", x: 1640, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushLarge", x: 1940, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushMedium", x: 2220, y: 530, w: 148, h: 172 })
 ]);
-const DECOR_ITEM_VARIANTS = Object.freeze([DECOR_ITEMS_VARIANT_A, DECOR_ITEMS_VARIANT_B]);
+const DECOR_ITEMS_VARIANT_C = Object.freeze([
+  Object.freeze({ key: "sceneTreeRight", x: 40, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeLeft", x: 500, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeRight", x: 1080, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneTreeLeft", x: 1700, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneLamp", x: 300, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushSmall", x: 700, y: 535, w: 165, h: 165 }),
+  Object.freeze({ key: "sceneBushLarge", x: 980, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushMedium", x: 1340, y: 530, w: 148, h: 176 }),
+  Object.freeze({ key: "sceneLamp", x: 1580, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushLarge", x: 1880, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneBushSmall", x: 2160, y: 535, w: 165, h: 165 })
+]);
+const DECOR_ITEM_VARIANTS = Object.freeze([
+  DECOR_ITEMS_VARIANT_A,
+  DECOR_ITEMS_VARIANT_B,
+  DECOR_ITEMS_VARIANT_C
+]);
 const DECOR_CULL_MARGIN = 180;
+const DECOR_SPAWN_PAD_LEFT = 320;
+const DECOR_SPAWN_PAD_RIGHT = 420;
 
 const WARNING_BADGE_BASE_W = 166;
 const WARNING_BADGE_BASE_H = 52;
@@ -987,9 +998,13 @@ export function createPixiRenderer(options = {}) {
     ].join("");
 
     const overscan = renderOverscanForLayout(sceneState?.layoutState, visibleWorldWidth);
-    const renderWorldMinX = -overscan.left;
+    const renderWorldMinX = -overscan.left - DECOR_SPAWN_PAD_LEFT;
     const effectiveWorldWidth = Math.min(
-      visibleWorldWidth + overscan.left + overscan.right,
+      visibleWorldWidth +
+        overscan.left +
+        overscan.right +
+        DECOR_SPAWN_PAD_LEFT +
+        DECOR_SPAWN_PAD_RIGHT,
       MAX_DECOR_WORLD_WIDTH
     );
     const renderWorldMaxX = renderWorldMinX + effectiveWorldWidth;
@@ -1008,15 +1023,14 @@ export function createPixiRenderer(options = {}) {
       return;
     }
 
-    const tileIndexStart = Math.floor((skyOffset + renderWorldMinX) / sceneDrawWidth);
+    const tileIndexStart = Math.floor((skyOffset + renderWorldMinX) / sceneDrawWidth) - 1;
     const tileStartX = tileIndexStart * sceneDrawWidth - skyOffset;
-    const tileCount = Math.ceil(effectiveWorldWidth / sceneDrawWidth) + 2;
+    const tileCount = Math.ceil(effectiveWorldWidth / sceneDrawWidth) + 3;
 
     let spriteIndex = 0;
     for (let i = 0; i < tileCount; i += 1) {
       const tileIndex = tileIndexStart + i;
       const tileX = tileStartX + i * sceneDrawWidth;
-      const mirrored = tileIndex % 2 !== 0;
 
       const decorItems =
         DECOR_ITEM_VARIANTS[positiveModulo(tileIndex, DECOR_ITEM_VARIANTS.length)] ||
@@ -1032,9 +1046,9 @@ export function createPixiRenderer(options = {}) {
           continue;
         }
 
-        const spriteX = mirrored ? tileX + (sceneDrawWidth - item.x) : tileX + item.x;
-        const minX = mirrored ? spriteX - item.w : spriteX;
-        const maxX = mirrored ? spriteX : spriteX + item.w;
+        const spriteX = tileX + item.x;
+        const minX = spriteX;
+        const maxX = spriteX + item.w;
         if (
           maxX < renderWorldMinX - DECOR_CULL_MARGIN ||
           minX > renderWorldMaxX + DECOR_CULL_MARGIN
@@ -1048,7 +1062,7 @@ export function createPixiRenderer(options = {}) {
         sprite.texture = texture;
         sprite.x = spriteX;
         sprite.y = item.y;
-        sprite.scale.set(mirrored ? -scaleX : scaleX, scaleY);
+        sprite.scale.set(scaleX, scaleY);
         visibleDisplay(sprite, true);
       }
     }
