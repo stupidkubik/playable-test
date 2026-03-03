@@ -20,7 +20,7 @@ const LAYER_NAMES = Object.freeze([
 ]);
 
 const DECOR_LAYOUT_BASE_WIDTH = 720;
-const DECOR_ITEMS = Object.freeze([
+const DECOR_ITEMS_VARIANT_A = Object.freeze([
   Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 1100, y: -40, w: 1000, h: 740 }),
   Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 600, y: -40, w: 1000, h: 740 }),
   Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH - 400, y: 0, w: 200, h: 700 }),
@@ -36,6 +36,24 @@ const DECOR_ITEMS = Object.freeze([
   Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 1200, y: 0, w: 200, h: 700 }),
   Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 1400, y: 530, w: 220, h: 180 })
 ]);
+const DECOR_ITEMS_VARIANT_B = Object.freeze([
+  Object.freeze({ key: "sceneTreeRight", x: DECOR_LAYOUT_BASE_WIDTH - 1040, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH - 700, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH - 790, y: 528, w: 150, h: 176 }),
+  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH - 560, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH - 250, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 110, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH + 20, y: 535, w: 165, h: 165 }),
+  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 250, y: 530, w: 148, h: 172 }),
+  Object.freeze({ key: "sceneTreeRight", x: DECOR_LAYOUT_BASE_WIDTH + 520, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneBushLarge", x: DECOR_LAYOUT_BASE_WIDTH + 460, y: 530, w: 220, h: 180 }),
+  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 940, y: 0, w: 200, h: 700 }),
+  Object.freeze({ key: "sceneBushSmall", x: DECOR_LAYOUT_BASE_WIDTH + 1020, y: 535, w: 165, h: 165 }),
+  Object.freeze({ key: "sceneTreeLeft", x: DECOR_LAYOUT_BASE_WIDTH + 1330, y: -40, w: 1000, h: 740 }),
+  Object.freeze({ key: "sceneBushMedium", x: DECOR_LAYOUT_BASE_WIDTH + 1390, y: 530, w: 148, h: 172 }),
+  Object.freeze({ key: "sceneLamp", x: DECOR_LAYOUT_BASE_WIDTH + 1600, y: 0, w: 200, h: 700 })
+]);
+const DECOR_ITEM_VARIANTS = Object.freeze([DECOR_ITEMS_VARIANT_A, DECOR_ITEMS_VARIANT_B]);
 const DECOR_CULL_MARGIN = 180;
 
 const WARNING_BADGE_BASE_W = 166;
@@ -485,6 +503,13 @@ function visibleDisplay(node, value = true) {
 
 function hasNumber(value) {
   return Number.isFinite(value);
+}
+
+function positiveModulo(value, modulo) {
+  if (!Number.isFinite(value) || !Number.isFinite(modulo) || modulo <= 0) {
+    return 0;
+  }
+  return ((value % modulo) + modulo) % modulo;
 }
 
 export function createPixiRenderer(options = {}) {
@@ -993,7 +1018,11 @@ export function createPixiRenderer(options = {}) {
       const tileX = tileStartX + i * sceneDrawWidth;
       const mirrored = tileIndex % 2 !== 0;
 
-      for (const item of DECOR_ITEMS) {
+      const decorItems =
+        DECOR_ITEM_VARIANTS[positiveModulo(tileIndex, DECOR_ITEM_VARIANTS.length)] ||
+        DECOR_ITEMS_VARIANT_A;
+
+      for (const item of decorItems) {
         const sprite = ensureDecorSprite(spriteIndex);
         spriteIndex += 1;
 
