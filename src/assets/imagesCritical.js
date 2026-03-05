@@ -5,6 +5,8 @@ export const ASSET_IMAGES_CRITICAL = {
   playerSheet: imageUrl("playerSheet.png"),
   enemySheet: imageUrl("enemySheet.png"),
   hudCounter: imageUrl("hudCounter.webp"),
+  backdropPortrait: imageUrl("backdropPortrait.webp"),
+  backdropLandscape: imageUrl("backdropLandscape.webp"),
   collectibleIcon: imageUrl("collectibleIcon.png"),
   collectiblePaypalCard: imageUrl("collectiblePaypalCard.png"),
   sceneBackground: imageUrl("sceneBackground.png"),

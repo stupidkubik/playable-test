@@ -246,8 +246,6 @@ const IMAGE_DEFERRED_KEYS = Object.freeze([
   "tutorialHand",
   "paypalCardOriginal",
   "lightsEffectOriginal",
-  "backdropPortrait",
-  "backdropLandscape",
   "finishFloorPattern",
   "finishPoleLeft",
   "finishPoleRight",

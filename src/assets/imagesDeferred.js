@@ -6,8 +6,6 @@ export const ASSET_IMAGES_DEFERRED = {
   tutorialHand: imageUrl("tutorialHand.png"),
   paypalCardOriginal: imageUrl("paypalCardOriginal.webp"),
   lightsEffectOriginal: imageUrl("lightsEffectOriginal.png"),
-  backdropPortrait: imageUrl("backdropPortrait.webp"),
-  backdropLandscape: imageUrl("backdropLandscape.webp"),
   finishFloorPattern: imageUrl("finishFloorPattern.png"),
   finishPoleLeft: imageUrl("finishPoleLeft.png"),
   finishPoleRight: imageUrl("finishPoleRight.png"),
