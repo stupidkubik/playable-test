@@ -1153,6 +1153,32 @@ function scheduleUiPrewarm({ flyingPoolSize = 14 } = {}) {
   });
 }
 
+function scheduleRendererPrewarm() {
+  const renderer = activeRenderer;
+  if (!renderer?.prewarm) {
+    return;
+  }
+
+  const runPrewarm = () => {
+    try {
+      const viewportState = viewportManager.getState();
+      renderer.prewarm({
+        state,
+        layoutState: viewportState.layoutState || null
+      });
+    } catch (error) {
+      console.warn("[renderer] deferred prewarm failed", error);
+    }
+  };
+
+  if (typeof globalThis.requestIdleCallback === "function") {
+    globalThis.requestIdleCallback(() => runPrewarm(), { timeout: 250 });
+    return;
+  }
+
+  setTimeout(runPrewarm, 0);
+}
+
 async function waitForDeferredAssetsDuringBoot(waitBudgetMs = DEFERRED_BOOT_WAIT_BUDGET_MS) {
   if (!state.deferredAssetsPromise) {
     return;
@@ -1303,6 +1329,7 @@ async function warmDeferredAssets() {
     normalizeImageAliases();
     applyLoadedImageBindings();
     scheduleUiPrewarm({ flyingPoolSize: 18 });
+    scheduleRendererPrewarm();
   }
 }
 

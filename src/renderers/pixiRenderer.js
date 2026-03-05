@@ -584,6 +584,8 @@ export function createPixiRenderer(options = {}) {
   let originalCanvasInlineZIndex = "";
   let lastAppliedPixelRatio = null;
   let prewarmed = false;
+  let warmupScaffoldReady = false;
+  const warmedTextures = new WeakSet();
 
   const skyState = {
     sprites: [],
@@ -2027,10 +2029,11 @@ export function createPixiRenderer(options = {}) {
   }
 
   function prewarmRendererResources(frame = null) {
-    if (prewarmed || !initialized || !PIXIRef || !layers) {
+    if (!initialized || !PIXIRef || !layers || !app) {
       return;
     }
 
+    const initialPass = !prewarmed;
     const sceneState = frame?.state || frame || null;
     const images = sceneState?.resources?.images;
     if (!images) {
@@ -2058,15 +2061,25 @@ export function createPixiRenderer(options = {}) {
       images.finishPoleRight,
       images.finishTapeLeft,
       images.finishTapeRight,
-      images.tutorialHand
+      images.tutorialHand,
+      images.confettiParticle1,
+      images.confettiParticle2,
+      images.confettiParticle3,
+      images.confettiParticle4,
+      images.confettiParticle5,
+      images.confettiParticle6
     ];
 
     const warmupTextures = new Set();
-    for (const image of imageCandidates) {
-      const texture = textureForImage(PIXIRef, textureCache, image);
-      if (texture) {
-        warmupTextures.add(texture);
+    const registerWarmupTexture = (texture) => {
+      if (!texture || warmedTextures.has(texture)) {
+        return;
       }
+      warmedTextures.add(texture);
+      warmupTextures.add(texture);
+    };
+    for (const image of imageCandidates) {
+      registerWarmupTexture(textureForImage(PIXIRef, textureCache, image));
     }
 
     const playerBaseTexture = textureForImage(PIXIRef, textureCache, images.playerSheet);
@@ -2089,68 +2102,76 @@ export function createPixiRenderer(options = {}) {
       enemyBaseTexture,
       firstEnemyFrame
     );
-    if (firstPlayerFrameTexture) {
-      warmupTextures.add(firstPlayerFrameTexture);
-    }
-    if (firstEnemyFrameTexture) {
-      warmupTextures.add(firstEnemyFrameTexture);
-    }
+    registerWarmupTexture(firstPlayerFrameTexture);
+    registerWarmupTexture(firstEnemyFrameTexture);
 
-    const tutorialNodes = ensureTutorialLayer();
-    const comboNode = ensureComboNode(0);
-    ensurePlayerNodes();
-    ensureFinishNodes();
+    let seededScaffoldNow = false;
+    if (!warmupScaffoldReady) {
+      const tutorialNodes = ensureTutorialLayer();
+      const comboNode = ensureComboNode(0);
+      ensurePlayerNodes();
+      ensureFinishNodes();
 
-    seedPool(enemyPool, createEnemyNode, hideEnemyNode, 1);
-    seedPool(obstaclePool, createObstacleNode, hideObstacleNode, 1);
-    seedPool(collectiblePool, createCollectibleNode, hideCollectibleNode, 1);
-    seedPool(warningPool, createWarningNode, hideWarningNode, 1);
+      seedPool(enemyPool, createEnemyNode, hideEnemyNode, 1);
+      seedPool(obstaclePool, createObstacleNode, hideObstacleNode, 1);
+      seedPool(collectiblePool, createCollectibleNode, hideCollectibleNode, 1);
+      seedPool(warningPool, createWarningNode, hideWarningNode, 1);
 
-    forceTextRasterization(tutorialNodes.shadowText);
-    forceTextRasterization(tutorialNodes.frontText);
-    forceTextRasterization(comboNode.shadow);
-    forceTextRasterization(comboNode.front);
-    const seededWarning = warningPool.free[0] || null;
-    forceTextRasterization(seededWarning?.text);
+      forceTextRasterization(tutorialNodes.shadowText);
+      forceTextRasterization(tutorialNodes.frontText);
+      forceTextRasterization(comboNode.shadow);
+      forceTextRasterization(comboNode.front);
+      const seededWarning = warningPool.free[0] || null;
+      forceTextRasterization(seededWarning?.text);
 
-    if (tutorialNodes.hand && images.tutorialHand) {
-      const handTexture = textureForImage(PIXIRef, textureCache, images.tutorialHand);
-      if (handTexture) {
-        tutorialNodes.hand.texture = handTexture;
-        warmupTextures.add(handTexture);
+      if (tutorialNodes.hand && images.tutorialHand) {
+        const handTexture = textureForImage(PIXIRef, textureCache, images.tutorialHand);
+        if (handTexture) {
+          tutorialNodes.hand.texture = handTexture;
+          registerWarmupTexture(handTexture);
+        }
       }
+
+      warmupScaffoldReady = true;
+      seededScaffoldNow = true;
     }
 
-    // Force one hidden draw pass so textures are uploaded to GPU before gameplay.
-    const gpuWarmupLayer = new PIXIRef.Container();
-    gpuWarmupLayer.alpha = 0.01;
-    gpuWarmupLayer.visible = true;
-    gpuWarmupLayer.eventMode = "none";
-    app.stage.addChild(gpuWarmupLayer);
-    let warmupIndex = 0;
-    for (const texture of warmupTextures) {
-      const sample = new PIXIRef.Sprite(texture);
-      sample.x = (warmupIndex % 10) * 2;
-      sample.y = Math.floor(warmupIndex / 10) * 2;
-      sample.scale.set(
-        Math.max(0.02, 2 / Math.max(1, texture.width || 1)),
-        Math.max(0.02, 2 / Math.max(1, texture.height || 1))
-      );
-      gpuWarmupLayer.addChild(sample);
-      warmupIndex += 1;
+    if (warmupTextures.size > 0) {
+      // Force one hidden draw pass so textures are uploaded to GPU before gameplay.
+      const gpuWarmupLayer = new PIXIRef.Container();
+      gpuWarmupLayer.alpha = 0.01;
+      gpuWarmupLayer.visible = true;
+      gpuWarmupLayer.eventMode = "none";
+      app.stage.addChild(gpuWarmupLayer);
+      let warmupIndex = 0;
+      for (const texture of warmupTextures) {
+        const sample = new PIXIRef.Sprite(texture);
+        sample.x = (warmupIndex % 10) * 2;
+        sample.y = Math.floor(warmupIndex / 10) * 2;
+        sample.scale.set(
+          Math.max(0.02, 2 / Math.max(1, texture.width || 1)),
+          Math.max(0.02, 2 / Math.max(1, texture.height || 1))
+        );
+        gpuWarmupLayer.addChild(sample);
+        warmupIndex += 1;
+      }
+
+      try {
+        app.render();
+      } catch {
+        // Best-effort warmup only.
+      }
+      app.stage.removeChild(gpuWarmupLayer);
+      gpuWarmupLayer.destroy({ children: true });
     }
 
-    resetPoolsVisibility();
-
-    try {
-      app.render();
-    } catch {
-      // Best-effort warmup only.
+    if (seededScaffoldNow) {
+      resetPoolsVisibility();
     }
-    app.stage.removeChild(gpuWarmupLayer);
-    gpuWarmupLayer.destroy({ children: true });
 
-    prewarmed = true;
+    if (initialPass) {
+      prewarmed = true;
+    }
   }
 
   function resetPoolsVisibility() {
