@@ -345,11 +345,12 @@ npm run stress:heavy
 
 ## Публикация на GitHub Pages
 
-В проекте настроены:
+Публикация идет как статический сайт (без шага `jekyll-build-pages`):
 
-- `_config.yml`
-- `docs/index.md`
-- `.github/workflows/pages.yml`
-- `scripts/prepare-pages.mjs`
+- `docs/index.html` — корневая страница Pages.
+- `docs/playable/index.html` — собранный playable (копируется из `dist/playable.html`).
+- `.github/workflows/pages.yml` — CI для сборки и деплоя, загружает артефакт из `./docs`.
+- `scripts/prepare-pages.mjs` — подготовка `docs/playable/*` перед upload.
 
-В `Settings -> Pages` выбирается `Source: GitHub Actions`, дальше деплой идет через push в `main`.
+В workflow добавляется `docs/.nojekyll`, чтобы GitHub Pages не запускал Jekyll-обработку.
+В `Settings -> Pages` должен быть выбран `Source: GitHub Actions`; деплой запускается по push в `main`.
