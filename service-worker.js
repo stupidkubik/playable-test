@@ -27,6 +27,10 @@ function isAssetRequest(request, url) {
     return false;
   }
 
+  if (url.pathname.includes("/node_modules/")) {
+    return false;
+  }
+
   if (isAudioRequest(request, url)) {
     // Audio preload can use range-like requests and is sensitive to transient fetch failures.
     // Let the browser handle audio networking/cache directly.

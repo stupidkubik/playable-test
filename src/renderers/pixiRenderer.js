@@ -131,11 +131,36 @@ const LANDSCAPE_RENDER_OVERSCAN_RIGHT_RATIO = 0.35;
 const PLAYER_DAMAGE_REACTION_DEFAULT_MS = 650;
 const PLAYER_DAMAGE_REACTION_RUN_SEQUENCE = Object.freeze([0, 1, 3, 5, 3, 1, 0]);
 
+function isGithubPagesHost() {
+  const hostname = globalThis.location?.hostname || "";
+  return /(^|\.)github\.io$/i.test(hostname);
+}
+
+function canAutoLoadPixiScript() {
+  const protocol = globalThis.location?.protocol || "";
+  if (protocol !== "http:" && protocol !== "https:") {
+    return false;
+  }
+
+  // On GitHub Pages there is no node_modules in published artifact.
+  if (isGithubPagesHost()) {
+    return false;
+  }
+
+  return true;
+}
+
 function pixiScriptSources() {
-  return [
-    "/node_modules/pixi.js/dist/pixi.min.js",
-    "./node_modules/pixi.js/dist/pixi.min.js"
-  ];
+  const candidates = [];
+
+  try {
+    candidates.push(new URL("../../node_modules/pixi.js/dist/pixi.min.js", import.meta.url).href);
+  } catch {
+    // Keep fallback list empty on malformed module URL.
+  }
+
+  candidates.push("/node_modules/pixi.js/dist/pixi.min.js");
+  return [...new Set(candidates)];
 }
 
 function loadScript(src) {
@@ -198,6 +223,10 @@ async function getPixiGlobal() {
 
   if (bundledSingleHtmlRuntime) {
     throw new Error("window.PIXI not found in bundled single-html runtime");
+  }
+
+  if (!canAutoLoadPixiScript()) {
+    throw new Error("window.PIXI not found; automatic Pixi script loading is disabled on this host");
   }
 
   if (!pixiGlobalPromise) {

@@ -151,8 +151,7 @@ function hardenRendererForSingleHtml(source) {
     `function pixiScriptSources() {
   return [];
 }
-
-function loadScript(src) {`
+`
   );
 }
 
