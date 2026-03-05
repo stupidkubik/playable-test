@@ -97,10 +97,16 @@ function registerServiceWorker() {
   const params = new URLSearchParams(window.location.search || "");
   const swDisabledByQuery = params.get("sw") === "0";
   const swDisabledByStorage = readStorageFlag("playable:disableSw");
+  const bundledSingleHtmlRuntime = hasBundledAssetConstants();
   const protocol = window.location?.protocol || "";
   const hostname = window.location?.hostname || "";
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-  const shouldDisableServiceWorker = stressConfig.enabled || swDisabledByQuery || swDisabledByStorage || isLocalHost;
+  const shouldDisableServiceWorker =
+    bundledSingleHtmlRuntime ||
+    stressConfig.enabled ||
+    swDisabledByQuery ||
+    swDisabledByStorage ||
+    isLocalHost;
 
   if (shouldDisableServiceWorker) {
     // Keep diagnostics predictable in stress/debug and prevent local cache-related noise.
@@ -261,6 +267,7 @@ const AUDIO_RELOAD_MAX_ATTEMPTS = 2;
 const AUDIO_RELOAD_COOLDOWN_MS = 1000;
 const IMAGE_LOAD_TIMEOUT_MS = 8000;
 const DEFERRED_BOOT_WAIT_BUDGET_MS = 2200;
+const DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS = 0;
 
 function playerSizeScaleForBucket(bucket) {
   const value = PLAYER_SIZE_SCALE_BY_BUCKET[bucket];
@@ -1142,8 +1149,18 @@ function prewarmUiAssets({ flyingPoolSize = 14 } = {}) {
   });
 }
 
-async function waitForDeferredAssetsDuringBoot() {
+function scheduleUiPrewarm({ flyingPoolSize = 14 } = {}) {
+  prewarmUiAssets({ flyingPoolSize }).catch((error) => {
+    console.warn("[assets] ui prewarm failed", error);
+  });
+}
+
+async function waitForDeferredAssetsDuringBoot(waitBudgetMs = DEFERRED_BOOT_WAIT_BUDGET_MS) {
   if (!state.deferredAssetsPromise) {
+    return;
+  }
+
+  if (!Number.isFinite(waitBudgetMs) || waitBudgetMs <= 0) {
     return;
   }
 
@@ -1151,7 +1168,7 @@ async function waitForDeferredAssetsDuringBoot() {
   const timedOut = await Promise.race([
     state.deferredAssetsPromise.then(() => false),
     new Promise((resolve) => {
-      timeoutId = setTimeout(() => resolve(true), DEFERRED_BOOT_WAIT_BUDGET_MS);
+      timeoutId = setTimeout(() => resolve(true), waitBudgetMs);
     })
   ]);
 
@@ -1161,7 +1178,7 @@ async function waitForDeferredAssetsDuringBoot() {
 
   if (timedOut) {
     console.warn(
-      `[assets] deferred preload exceeded ${DEFERRED_BOOT_WAIT_BUDGET_MS}ms boot budget; continuing startup`
+      `[assets] deferred preload exceeded ${waitBudgetMs}ms boot budget; continuing startup`
     );
   }
 }
@@ -1228,6 +1245,7 @@ function syncGameHeader(force = false) {
 }
 
 async function loadResources() {
+  const isBundledRuntime = hasBundledAssetConstants();
   const musicAudioDataPromise = loadMusicAudioAssetsData();
   const criticalImagesDataPromise = loadCriticalImageAssetsData();
 
@@ -1256,14 +1274,18 @@ async function loadResources() {
   Object.assign(state.resources.images, criticalImages);
   normalizeImageAliases();
   applyLoadedImageBindings();
-  await prewarmUiAssets({ flyingPoolSize: 14 });
+  // Keep boot path responsive: warmup runs in background after first frame.
+  scheduleUiPrewarm({ flyingPoolSize: 14 });
 
   if (!state.deferredAssetsPromise) {
     state.deferredAssetsPromise = warmDeferredAssets().catch((error) => {
       console.warn("[assets] deferred preload failed", error);
     });
   }
-  await waitForDeferredAssetsDuringBoot();
+  const deferredWaitBudgetMs = isBundledRuntime
+    ? DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS
+    : DEFERRED_BOOT_WAIT_BUDGET_MS;
+  await waitForDeferredAssetsDuringBoot(deferredWaitBudgetMs);
 }
 
 async function warmDeferredAssets() {
@@ -1282,7 +1304,7 @@ async function warmDeferredAssets() {
     Object.assign(state.resources.images, deferredImages);
     normalizeImageAliases();
     applyLoadedImageBindings();
-    await prewarmUiAssets({ flyingPoolSize: 18 });
+    scheduleUiPrewarm({ flyingPoolSize: 18 });
   }
 }
 

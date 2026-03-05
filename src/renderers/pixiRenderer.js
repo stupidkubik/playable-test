@@ -2,7 +2,6 @@ import { STATES, computeFinishGateGeometry } from "../gameLogic.js";
 import { ASSET_FRAMES } from "../assets/frames.js";
 
 let pixiGlobalPromise = null;
-const PIXI_CDN_SRC = "https://cdn.jsdelivr.net/npm/pixi.js@8.16.0/dist/pixi.min.js";
 
 const LAYER_NAMES = Object.freeze([
   "sky",
@@ -133,18 +132,9 @@ const PLAYER_DAMAGE_REACTION_DEFAULT_MS = 650;
 const PLAYER_DAMAGE_REACTION_RUN_SEQUENCE = Object.freeze([0, 1, 3, 5, 3, 1, 0]);
 
 function pixiScriptSources() {
-  const protocol = globalThis.location?.protocol || "";
-  const host = globalThis.location?.host || "";
-  const isHostedStatic = protocol === "file:" || host.endsWith(".github.io");
-
-  if (isHostedStatic) {
-    return [PIXI_CDN_SRC];
-  }
-
   return [
     "/node_modules/pixi.js/dist/pixi.min.js",
-    "./node_modules/pixi.js/dist/pixi.min.js",
-    PIXI_CDN_SRC
+    "./node_modules/pixi.js/dist/pixi.min.js"
   ];
 }
 
@@ -199,6 +189,15 @@ function loadScript(src) {
 async function getPixiGlobal() {
   if (globalThis.PIXI) {
     return globalThis.PIXI;
+  }
+
+  const bundledSingleHtmlRuntime =
+    typeof ASSET_IMAGES !== "undefined" &&
+    typeof ASSET_AUDIO !== "undefined" &&
+    typeof ASSET_FRAMES !== "undefined";
+
+  if (bundledSingleHtmlRuntime) {
+    throw new Error("window.PIXI not found in bundled single-html runtime");
   }
 
   if (!pixiGlobalPromise) {

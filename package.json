@@ -8,7 +8,9 @@
     "stress": "node scripts/stress.mjs",
     "stress:heavy": "STRESS_PROFILE=heavy node scripts/stress.mjs",
     "test": "node --test",
-    "build": "node scripts/build-single-html.mjs",
+    "build": "node scripts/build-single-html.mjs && node scripts/verify-playable-bundle.mjs",
+    "verify:bundle": "node scripts/verify-playable-bundle.mjs",
+    "build:verify": "npm run build",
     "build:stress": "node scripts/build-single-html.mjs --stress",
     "build:pages": "npm run build && node scripts/prepare-pages.mjs"
   },

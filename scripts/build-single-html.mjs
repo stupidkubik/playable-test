@@ -69,6 +69,113 @@ function minifyHtmlLite(source) {
     .trim();
 }
 
+function replaceSection(source, startMarker, endMarker, replacement) {
+  const startIndex = source.indexOf(startMarker);
+  if (startIndex < 0) {
+    throw new Error(`build transform failed: start marker not found: ${startMarker}`);
+  }
+
+  const endIndex = source.indexOf(endMarker, startIndex);
+  if (endIndex < 0) {
+    throw new Error(`build transform failed: end marker not found: ${endMarker}`);
+  }
+
+  return source.slice(0, startIndex) + replacement + source.slice(endIndex);
+}
+
+function hardenGameForSingleHtml(source) {
+  let next = source;
+
+  next = replaceSection(
+    next,
+    "function registerServiceWorker() {",
+    "\n\nregisterServiceWorker();",
+    `function registerServiceWorker() {
+  // Service worker is disabled in single-file playable build.
+}
+`
+  );
+
+  next = replaceSection(
+    next,
+    "async function loadCriticalImageAssetsData() {",
+    "\n\nasync function loadDeferredImageAssetsData()",
+    `async function loadCriticalImageAssetsData() {
+  return omitAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEY_SET);
+}
+
+async function loadDeferredImageAssetsData()`
+  );
+
+  next = replaceSection(
+    next,
+    "async function loadDeferredImageAssetsData() {",
+    "\n\nasync function loadMusicAudioAssetsData()",
+    `async function loadDeferredImageAssetsData() {
+  return pickAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEYS);
+}
+
+async function loadMusicAudioAssetsData()`
+  );
+
+  next = replaceSection(
+    next,
+    "async function loadMusicAudioAssetsData() {",
+    "\n\nasync function loadSfxAudioAssetsData()",
+    `async function loadMusicAudioAssetsData() {
+  return pickAssetKeys(ASSET_AUDIO, AUDIO_MUSIC_KEYS);
+}
+
+async function loadSfxAudioAssetsData()`
+  );
+
+  next = replaceSection(
+    next,
+    "async function loadSfxAudioAssetsData() {",
+    "\n\nfunction readPerfDebugConfig()",
+    `async function loadSfxAudioAssetsData() {
+  return pickAssetKeys(ASSET_AUDIO, AUDIO_SFX_KEYS);
+}
+
+function readPerfDebugConfig()`
+  );
+
+  return next;
+}
+
+function hardenRendererForSingleHtml(source) {
+  return replaceSection(
+    source,
+    "function pixiScriptSources() {",
+    "\n\nfunction loadScript(src) {",
+    `function pixiScriptSources() {
+  return [];
+}
+
+function loadScript(src) {`
+  );
+}
+
+function hardenPixiRuntimeForSingleHtml(source) {
+  return source
+    .replaceAll(
+      "https://cdn.jsdelivr.net/npm/pixi.js/transcoders/basis/basis_transcoder.js",
+      "data:text/javascript;base64,"
+    )
+    .replaceAll(
+      "https://cdn.jsdelivr.net/npm/pixi.js/transcoders/basis/basis_transcoder.wasm",
+      "data:application/wasm;base64,"
+    )
+    .replaceAll(
+      "https://cdn.jsdelivr.net/npm/pixi.js/transcoders/ktx/libktx.js",
+      "data:text/javascript;base64,"
+    )
+    .replaceAll(
+      "https://cdn.jsdelivr.net/npm/pixi.js/transcoders/ktx/libktx.wasm",
+      "data:application/wasm;base64,"
+    );
+}
+
 const MIME_BY_EXT = new Map([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
@@ -188,8 +295,8 @@ const cleanedUiEffects = stripLocalImports(uiEffects);
 const cleanedStressRuntime = stripLocalImports(stressRuntime);
 const cleanedLayoutEngine = stripLocalImports(layoutEngine);
 const cleanedViewport = stripLocalImports(viewport);
-const cleanedRendererSources = rendererSources.map(stripLocalImports);
-const cleanedGame = stripLocalImports(game);
+const cleanedRendererSources = rendererSources.map(stripLocalImports).map(hardenRendererForSingleHtml);
+const cleanedGame = hardenGameForSingleHtml(stripLocalImports(game));
 const assetModulesSource = serializeAssetModulesSource({
   images: inlinedAssets.images,
   audio: inlinedAssets.audio,
@@ -211,7 +318,7 @@ const bundle = bundleParts
   .replace(/export\s+/g, "")
   .replace(/^\s*\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
   .replace(/^\s*\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
-const inlinedPixi = escapeInlineScript(pixiRuntime);
+const inlinedPixi = escapeInlineScript(hardenPixiRuntimeForSingleHtml(pixiRuntime));
 const inlinedBundle = escapeInlineScript(bundle);
 
 let html = indexHtml;

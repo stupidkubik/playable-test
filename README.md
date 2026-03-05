@@ -39,7 +39,8 @@ npm run dev
 - `npm run stress` — запуск dev-server в режиме стресс-теста (с готовыми query-параметрами).
 - `npm run stress:heavy` — агрессивный профиль для воспроизведения фризов (больше спавна, больше сущностей, без 30 FPS cap в landscape).
 - `npm test` — unit-тесты (`node --test`).
-- `npm run build` — single-html сборка в `dist/playable.html`.
+- `npm run build` — single-html сборка в `dist/playable.html` + автоматическая проверка лимита `< 5 MB` и запрета runtime-догрузок.
+- `npm run verify:bundle` — отдельная проверка готового `dist/playable.html` (размер + forbidden runtime references).
 - `npm run build:stress` — single-html сборка c полным stress-runtime (для профилирования в билде, выходной файл `dist/playable.stress.html`).
 - `npm run build:pages` — сборка + копирование в `docs/playable/index.html` для GitHub Pages.
 
