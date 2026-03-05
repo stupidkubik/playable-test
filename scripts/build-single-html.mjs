@@ -15,6 +15,7 @@ const logicPath = path.resolve(rootDir, "src/gameLogic.js");
 const layoutEnginePath = path.resolve(rootDir, "src/layout/layoutEngine.js");
 const viewportPath = path.resolve(rootDir, "src/viewport.js");
 const uiEffectsPath = path.resolve(rootDir, "src/uiEffects.js");
+const clickOutPath = path.resolve(rootDir, "src/clickOut.js");
 const stressRuntimeFullPath = path.resolve(rootDir, "src/stress/runtime.full.js");
 const stressRuntimeStubPath = path.resolve(rootDir, "src/stress/runtime.stub.js");
 const renderersDir = path.resolve(rootDir, "src/renderers");
@@ -81,6 +82,54 @@ function replaceSection(source, startMarker, endMarker, replacement) {
   }
 
   return source.slice(0, startIndex) + replacement + source.slice(endIndex);
+}
+
+function extractRelativeImportSpecifiers(source) {
+  const specifiers = [];
+  const importFromRegex = /^\s*import[\s\S]*?\sfrom\s+["']((?:\.\.\/|\.\/)[^"']+)["'];?\s*$/gm;
+  const sideEffectImportRegex = /^\s*import\s+["']((?:\.\.\/|\.\/)[^"']+)["'];?\s*$/gm;
+  let match = null;
+
+  while ((match = importFromRegex.exec(source)) !== null) {
+    specifiers.push(match[1]);
+  }
+
+  while ((match = sideEffectImportRegex.exec(source)) !== null) {
+    specifiers.push(match[1]);
+  }
+
+  return specifiers;
+}
+
+function resolveImportPath(fromPath, specifier) {
+  const resolved = path.resolve(path.dirname(fromPath), specifier);
+  if (path.extname(resolved)) {
+    return path.normalize(resolved);
+  }
+
+  return path.normalize(`${resolved}.js`);
+}
+
+function verifyBundledModuleCoverage(modules, satisfiedPaths) {
+  const uncovered = [];
+
+  for (const module of modules) {
+    const imports = extractRelativeImportSpecifiers(module.source);
+    for (const specifier of imports) {
+      const importedPath = resolveImportPath(module.filePath, specifier);
+      if (!satisfiedPaths.has(importedPath)) {
+        uncovered.push(
+          `${path.relative(rootDir, module.filePath)} -> ${specifier} (${path.relative(rootDir, importedPath)})`
+        );
+      }
+    }
+  }
+
+  if (uncovered.length > 0) {
+    throw new Error(
+      "build dependency coverage failed; missing inlined modules:\n" + uncovered.map((item) => `- ${item}`).join("\n")
+    );
+  }
 }
 
 function hardenGameForSingleHtml(source) {
@@ -264,14 +313,37 @@ const [indexHtml, css, ...restSources] = await Promise.all([
   fs.readFile(layoutEnginePath, "utf8"),
   fs.readFile(viewportPath, "utf8"),
   fs.readFile(uiEffectsPath, "utf8"),
+  fs.readFile(clickOutPath, "utf8"),
   fs.readFile(stressRuntimePath, "utf8"),
   fs.readFile(pixiPath, "utf8"),
   ...rendererPaths.map((filePath) => fs.readFile(filePath, "utf8")),
   fs.readFile(gamePath, "utf8")
 ]);
-const [logic, layoutEngine, viewport, uiEffects, stressRuntime, pixiRuntime, ...sources] = restSources;
+const [logic, layoutEngine, viewport, uiEffects, clickOut, stressRuntime, pixiRuntime, ...sources] = restSources;
 const game = sources.pop();
 const rendererSources = sources;
+
+const modulesForCoverage = [
+  { filePath: logicPath, source: logic },
+  { filePath: layoutEnginePath, source: layoutEngine },
+  { filePath: viewportPath, source: viewport },
+  { filePath: uiEffectsPath, source: uiEffects },
+  { filePath: clickOutPath, source: clickOut },
+  { filePath: stressRuntimePath, source: stressRuntime },
+  ...rendererSources.map((source, index) => ({ filePath: rendererPaths[index], source })),
+  { filePath: gamePath, source: game }
+];
+
+const satisfiedImportPaths = new Set(
+  [
+    ...modulesForCoverage.map((module) => path.normalize(module.filePath)),
+    path.normalize(path.resolve(assetsDir, "frames.js")),
+    path.normalize(stressRuntimeFullPath),
+    path.normalize(stressRuntimeStubPath)
+  ]
+);
+
+verifyBundledModuleCoverage(modulesForCoverage, satisfiedImportPaths);
 
 const stripLocalImports = (source) =>
   source
@@ -283,6 +355,7 @@ const stripLocalImports = (source) =>
     .replace(/^\s*export\s+\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
     .replace(/^\s*export\s+\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
 const cleanedUiEffects = stripLocalImports(uiEffects);
+const cleanedClickOut = stripLocalImports(clickOut);
 const cleanedStressRuntime = stripLocalImports(stressRuntime);
 const cleanedLayoutEngine = stripLocalImports(layoutEngine);
 const cleanedViewport = stripLocalImports(viewport);
@@ -300,6 +373,7 @@ const bundleParts = [
   compactJsSourceLite(cleanedLayoutEngine),
   compactJsSourceLite(cleanedViewport),
   compactJsSourceLite(cleanedUiEffects),
+  compactJsSourceLite(cleanedClickOut),
   compactJsSourceLite(cleanedStressRuntime),
   ...cleanedRendererSources.map(compactJsSourceLite),
   compactJsSourceLite(cleanedGame)
