@@ -102,9 +102,7 @@ function hardenGameForSingleHtml(source) {
     "\n\nasync function loadDeferredImageAssetsData()",
     `async function loadCriticalImageAssetsData() {
   return omitAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEY_SET);
-}
-
-async function loadDeferredImageAssetsData()`
+}`
   );
 
   next = replaceSection(
@@ -113,9 +111,7 @@ async function loadDeferredImageAssetsData()`
     "\n\nasync function loadMusicAudioAssetsData()",
     `async function loadDeferredImageAssetsData() {
   return pickAssetKeys(ASSET_IMAGES, IMAGE_DEFERRED_KEYS);
-}
-
-async function loadMusicAudioAssetsData()`
+}`
   );
 
   next = replaceSection(
@@ -124,9 +120,7 @@ async function loadMusicAudioAssetsData()`
     "\n\nasync function loadSfxAudioAssetsData()",
     `async function loadMusicAudioAssetsData() {
   return pickAssetKeys(ASSET_AUDIO, AUDIO_MUSIC_KEYS);
-}
-
-async function loadSfxAudioAssetsData()`
+}`
   );
 
   next = replaceSection(
@@ -135,9 +129,7 @@ async function loadSfxAudioAssetsData()`
     "\n\nfunction readPerfDebugConfig()",
     `async function loadSfxAudioAssetsData() {
   return pickAssetKeys(ASSET_AUDIO, AUDIO_SFX_KEYS);
-}
-
-function readPerfDebugConfig()`
+}`
   );
 
   return next;
