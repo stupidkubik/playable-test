@@ -42,7 +42,7 @@ npm run dev
 - `npm run build` — single-html сборка в `dist/playable.html` + автоматическая проверка лимита `< 5 MB` и запрета runtime-догрузок.
 - `npm run verify:bundle` — отдельная проверка готового `dist/playable.html` (размер + forbidden runtime references).
 - `npm run build:stress` — single-html сборка c полным stress-runtime (для профилирования в билде, выходной файл `dist/playable.stress.html`).
-- `npm run build:pages` — сборка + копирование в `docs/playable/index.html` для GitHub Pages.
+- `npm run build:pages` — сборка + подготовка Pages-артефакта в `dist/pages/` (корневой `index.html` + `service-worker.js` + `.nojekyll`).
 
 ## Структура проекта
 
@@ -58,6 +58,7 @@ npm run dev
 - `src/style.css` — стили fullscreen shell, HUD, overlays, footer.
 - `src/assets/*.js` — локальные ассеты (images/audio/frames), включая split-модули `imagesCritical/imagesDeferred`, `audioMusic/audioSfx`.
 - `scripts/build-single-html.mjs` — упаковка ассетов, Pixi runtime и проекта в один HTML.
+- `scripts/prepare-pages-artifact.mjs` — подготовка deploy-артефакта для GitHub Pages в `dist/pages/`.
 - `test/gameLogic.test.js` — unit-тесты логики.
 
 ## Runtime: актуальная логика
@@ -347,10 +348,11 @@ npm run stress:heavy
 
 Публикация идет как статический сайт (без шага `jekyll-build-pages`):
 
-- `docs/index.html` — корневая страница Pages.
-- `docs/playable/index.html` — собранный playable (копируется из `dist/playable.html`).
-- `.github/workflows/pages.yml` — CI для сборки и деплоя, загружает артефакт из `./docs`.
-- `scripts/prepare-pages.mjs` — подготовка `docs/playable/*` перед upload.
+- `dist/playable.html` — собранный single-html playable.
+- `dist/pages/index.html` — корневая страница deploy-артефакта (копия `dist/playable.html`).
+- `dist/pages/service-worker.js` — runtime cache SW для Pages.
+- `.github/workflows/pages.yml` — CI для сборки и деплоя, загружает артефакт из `./dist/pages`.
+- `scripts/prepare-pages-artifact.mjs` — подготовка `dist/pages/*` перед upload.
 
-В workflow добавляется `docs/.nojekyll`, чтобы GitHub Pages не запускал Jekyll-обработку.
+В артефакт добавляется `.nojekyll`, чтобы GitHub Pages не запускал Jekyll-обработку.
 В `Settings -> Pages` должен быть выбран `Source: GitHub Actions`; деплой запускается по push в `main`.

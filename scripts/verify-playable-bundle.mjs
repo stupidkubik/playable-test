@@ -19,11 +19,11 @@ const FORBIDDEN_PATTERNS = [
   },
   {
     name: "Service worker runtime registration",
-    pattern: /register\(\"\.\/service-worker\.js\"\)/i
+    pattern: /register\(\s*["']\.\/service-worker\.js["']\s*\)/i
   },
   {
     name: "Deferred asset dynamic import fallback",
-    pattern: /import\(\"\.\/assets\/(imagesCritical|imagesDeferred|audioMusic|audioSfx)\.js\"\)/i
+    pattern: /import\(\s*["']\.\/assets\/(imagesCritical|imagesDeferred|audioMusic|audioSfx)\.js["']\s*\)/i
   }
 ];
 

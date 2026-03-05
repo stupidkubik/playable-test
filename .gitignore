@@ -1,6 +1,7 @@
 dist/playable.html
 dist/playable.stress.html
 dist/service-worker.js
+dist/pages/
 .DS_Store
 .cursor/
 node_modules/

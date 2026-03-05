@@ -12,7 +12,7 @@
     "verify:bundle": "node scripts/verify-playable-bundle.mjs",
     "build:verify": "npm run build",
     "build:stress": "node scripts/build-single-html.mjs --stress",
-    "build:pages": "npm run build && node scripts/prepare-pages.mjs"
+    "build:pages": "npm run build && node scripts/prepare-pages-artifact.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.16.0"
