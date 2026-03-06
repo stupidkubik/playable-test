@@ -435,27 +435,85 @@ function buildCssVarMap(layoutState) {
   };
 }
 
-function applyLayoutDataAttributes(root, layoutState) {
-  if (!root?.dataset) {
-    return;
-  }
-
-  root.dataset.layoutBucket = layoutState.bucket;
-  root.dataset.layoutOrientation = layoutState.orientation;
-  root.dataset.layoutUiDensity = layoutState.uiTokens.uiDensity;
-  root.dataset.layoutFooterVariant = layoutState.uiTokens.footerVariant;
-  root.dataset.layoutOverlayMode = layoutState.uiTokens.overlayMode;
+function buildLayoutDataAttributes(layoutState) {
+  return {
+    layoutBucket: layoutState.bucket,
+    layoutOrientation: layoutState.orientation,
+    layoutUiDensity: layoutState.uiTokens.uiDensity,
+    layoutFooterVariant: layoutState.uiTokens.footerVariant,
+    layoutOverlayMode: layoutState.uiTokens.overlayMode
+  };
 }
 
-function applyLayoutCssVars(root, layoutState) {
-  if (!root?.style) {
-    return;
+function applyLayoutDataAttributes(root, attributes, previousAttributes = null) {
+  if (!root?.dataset) {
+    return previousAttributes;
   }
 
-  const vars = buildCssVarMap(layoutState);
-  for (const [name, value] of Object.entries(vars)) {
-    root.style.setProperty(name, value);
+  const nextAttributes = previousAttributes ? { ...previousAttributes } : {};
+  const prevEntries = previousAttributes ? Object.entries(previousAttributes) : [];
+
+  for (const [name] of prevEntries) {
+    if (!(name in attributes)) {
+      delete root.dataset[name];
+      delete nextAttributes[name];
+    }
   }
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (previousAttributes?.[name] === value) {
+      continue;
+    }
+
+    root.dataset[name] = value;
+    nextAttributes[name] = value;
+  }
+
+  return nextAttributes;
+}
+
+function applyLayoutCssVars(root, vars, previousVars = null) {
+  if (!root?.style) {
+    return previousVars;
+  }
+
+  const nextVars = previousVars ? { ...previousVars } : {};
+  const prevEntries = previousVars ? Object.entries(previousVars) : [];
+
+  for (const [name] of prevEntries) {
+    if (!(name in vars)) {
+      root.style.removeProperty(name);
+      delete nextVars[name];
+    }
+  }
+
+  for (const [name, value] of Object.entries(vars)) {
+    if (previousVars?.[name] === value) {
+      continue;
+    }
+
+    root.style.setProperty(name, value);
+    nextVars[name] = value;
+  }
+
+  return nextVars;
+}
+
+function buildLayoutStateSignature(layoutState) {
+  return JSON.stringify({
+    pixelRatio: layoutState.pixelRatio,
+    bucket: layoutState.bucket,
+    orientation: layoutState.orientation,
+    screenRect: layoutState.screenRect,
+    safeRect: layoutState.safeRect,
+    worldViewportRect: layoutState.worldViewportRect,
+    cameraViewWorldRect: layoutState.cameraViewWorldRect,
+    cameraTransform: layoutState.cameraTransform,
+    zones: layoutState.zones,
+    uiTokens: layoutState.uiTokens,
+    gameplayTokens: layoutState.gameplayTokens,
+    metrics: layoutState.metrics
+  });
 }
 
 export function createLayoutEngine(options = {}) {
@@ -470,8 +528,11 @@ export function createLayoutEngine(options = {}) {
   } = options;
 
   let state = null;
+  let stateSignature = "";
   let resizeObserver = null;
   let rafId = 0;
+  let appliedCssVars = null;
+  let appliedDataAttributes = null;
   const subscribers = new Set();
 
   function buildState() {
@@ -559,10 +620,11 @@ export function createLayoutEngine(options = {}) {
     };
   }
 
-  function notify(nextState) {
+  function notify(nextState, nextSignature) {
     state = nextState;
-    applyLayoutCssVars(root, state);
-    applyLayoutDataAttributes(root, state);
+    stateSignature = nextSignature;
+    appliedCssVars = applyLayoutCssVars(root, buildCssVarMap(state), appliedCssVars);
+    appliedDataAttributes = applyLayoutDataAttributes(root, buildLayoutDataAttributes(state), appliedDataAttributes);
     for (const subscriber of subscribers) {
       subscriber(state);
     }
@@ -570,7 +632,12 @@ export function createLayoutEngine(options = {}) {
 
   function measureNow() {
     const nextState = buildState();
-    notify(nextState);
+    const nextSignature = buildLayoutStateSignature(nextState);
+    if (state && nextSignature === stateSignature) {
+      return state;
+    }
+
+    notify(nextState, nextSignature);
     return nextState;
   }
 
