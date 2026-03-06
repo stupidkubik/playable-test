@@ -52,6 +52,12 @@ function compactJsSourceLite(source) {
     .trim();
 }
 
+function stripSourceMappingUrlComments(source) {
+  return source
+    .replace(/^[ \t]*\/\/[#@]\s*sourceMappingURL=.*$/gm, "")
+    .replace(/\/\*[#@]\s*sourceMappingURL=[\s\S]*?\*\//g, "");
+}
+
 function minifyCssLite(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -373,8 +379,10 @@ const bundle = bundleParts
   .replace(/export\s+/g, "")
   .replace(/^\s*\{[^}]+\}\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "")
   .replace(/^\s*\*\s+from\s+["'](?:\.\.\/|\.\/)[^"']+["'];?\s*$/gm, "");
-const inlinedPixi = escapeInlineScript(hardenPixiRuntimeForSingleHtml(pixiRuntime));
-const inlinedBundle = escapeInlineScript(bundle);
+const inlinedPixi = escapeInlineScript(
+  stripSourceMappingUrlComments(hardenPixiRuntimeForSingleHtml(pixiRuntime))
+);
+const inlinedBundle = escapeInlineScript(stripSourceMappingUrlComments(bundle));
 
 let html = indexHtml;
 html = html.replace(
