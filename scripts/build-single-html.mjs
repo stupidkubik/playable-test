@@ -175,7 +175,9 @@ function hardenGameForSingleHtml(source) {
   next = replaceSection(
     next,
     "async function loadSfxAudioAssetsData() {",
-    "\n\nfunction readPerfDebugConfig()",
+    next.includes("\n\nfunction waitForIdleSlice(")
+      ? "\n\nfunction waitForIdleSlice("
+      : "\n\nfunction readPerfDebugConfig()",
     `async function loadSfxAudioAssetsData() {
   return pickAssetKeys(ASSET_AUDIO, AUDIO_SFX_KEYS);
 }`
