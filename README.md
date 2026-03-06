@@ -42,7 +42,7 @@ npm run dev
 - `npm run build` — single-html сборка в `dist/playable.html` + автоматическая проверка лимита `< 5 MB` и запрета runtime-догрузок.
 - `npm run verify:bundle` — отдельная проверка готового `dist/playable.html` (размер + forbidden runtime references).
 - `npm run build:stress` — single-html сборка c полным stress-runtime (для профилирования в билде, выходной файл `dist/playable.stress.html`).
-- `npm run build:pages` — сборка + подготовка Pages-артефакта в `dist/pages/` (корневой `index.html` + `service-worker.js` + `.nojekyll`).
+- `npm run build:pages` — сборка + подготовка Pages-артефакта в `dist/pages/` (корневой `index.html` + `.nojekyll`).
 
 ## Структура проекта
 
@@ -75,13 +75,6 @@ npm run dev
 4. После critical-пакета можно запускать игровой цикл, deferred-пакет догружается параллельно.
 
 Это снижает time-to-interactive в dev/runtime и отдельно прогревает музыку.
-
-### 1.1 Service Worker cache (повторные загрузки)
-
-- В `service-worker.js` включено runtime-кэширование через `Cache Storage`.
-- Документы: `network-first` с fallback в кэш.
-- Статика (images/audio/scripts/styles/fonts): `stale-while-revalidate`.
-- Регистрация выполняется в `src/game.js` только в secure context (`https` или `localhost`).
 
 ### 2. Полноэкранный адаптивный layout (`src/layout/layoutEngine.js`, `src/viewport.js`)
 
@@ -350,7 +343,6 @@ npm run stress:heavy
 
 - `dist/playable.html` — собранный single-html playable.
 - `dist/pages/index.html` — корневая страница deploy-артефакта (копия `dist/playable.html`).
-- `dist/pages/service-worker.js` — runtime cache SW для Pages.
 - `.github/workflows/pages.yml` — CI для сборки и деплоя, загружает артефакт из `./dist/pages`.
 - `scripts/prepare-pages-artifact.mjs` — подготовка `dist/pages/*` перед upload.
 

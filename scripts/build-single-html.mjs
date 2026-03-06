@@ -21,8 +21,6 @@ const stressRuntimeStubPath = path.resolve(rootDir, "src/stress/runtime.stub.js"
 const renderersDir = path.resolve(rootDir, "src/renderers");
 const gamePath = path.resolve(rootDir, "src/game.js");
 const pixiPath = path.resolve(rootDir, "node_modules/pixi.js/dist/pixi.min.js");
-const serviceWorkerPath = path.resolve(rootDir, "service-worker.js");
-const outputServiceWorkerPath = path.resolve(distDir, "service-worker.js");
 const includeStressRuntime = process.env.BUILD_INCLUDE_STRESS === "1" || process.argv.includes("--stress");
 const stressRuntimePath = includeStressRuntime ? stressRuntimeFullPath : stressRuntimeStubPath;
 const outputFileName = includeStressRuntime ? "playable.stress.html" : "playable.html";
@@ -134,16 +132,6 @@ function verifyBundledModuleCoverage(modules, satisfiedPaths) {
 
 function hardenGameForSingleHtml(source) {
   let next = source;
-
-  next = replaceSection(
-    next,
-    "function registerServiceWorker() {",
-    "\n\nregisterServiceWorker();",
-    `function registerServiceWorker() {
-  // Service worker is disabled in single-file playable build.
-}
-`
-  );
 
   next = replaceSection(
     next,
@@ -400,14 +388,13 @@ html = minifyHtmlLite(html);
 
 await fs.mkdir(distDir, { recursive: true });
 await fs.writeFile(outputPath, html, "utf8");
-await fs.copyFile(serviceWorkerPath, outputServiceWorkerPath);
+await fs.rm(path.resolve(distDir, "service-worker.js"), { force: true });
 
 const stat = await fs.stat(outputPath);
 const sizeBytes = stat.size;
 const sizeKb = (sizeBytes / 1024).toFixed(1);
 const sizeMb = (stat.size / 1024 / 1024).toFixed(2);
 console.log(`Built ${outputPath}`);
-console.log(`Copied ${outputServiceWorkerPath}`);
 console.log(`[build] stress runtime: ${includeStressRuntime ? "full" : "stub"}`);
 console.log(`Bundle size: ${sizeBytes} bytes (${sizeKb} KB)`);
 console.log(`Bundle size: ${sizeMb} MB`);
