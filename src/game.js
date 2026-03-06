@@ -268,7 +268,42 @@ const DEFERRED_BOOT_WAIT_BUDGET_MS = 2200;
 const DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS = 0;
 const ASSET_DECODE_TIMEOUT_MS = 2600;
 const ASSET_IDLE_TIMEOUT_MS = 200;
-const ASSET_IDLE_DECODE_YIELD_EVERY = 2;
+const ASSET_IDLE_DECODE_YIELD_EVERY = 1;
+const RENDERER_PREWARM_IDLE_TIMEOUT_MS = 220;
+const RENDERER_PREWARM_IMAGE_BATCH_SIZE = 1;
+const RENDERER_PREWARM_IMAGE_PRIORITY_KEYS = Object.freeze([
+  "sceneBackground",
+  "sceneTreeLeft",
+  "sceneTreeRight",
+  "sceneBushLarge",
+  "sceneBushMedium",
+  "sceneBushSmall",
+  "sceneLamp",
+  "playerSheet",
+  "enemySheet",
+  "collectibleIcon",
+  "paypalCardCollectible",
+  "paypalCard",
+  "obstacleSprite",
+  "obstacleGlow",
+  "finishFloorPattern",
+  "finishPoleLeft",
+  "finishPoleRight",
+  "finishTapeLeft",
+  "finishTapeRight",
+  "tutorialHand",
+  "confettiParticle1",
+  "confettiParticle2",
+  "confettiParticle3",
+  "confettiParticle4",
+  "confettiParticle5",
+  "confettiParticle6"
+]);
+const RENDERER_PREWARM_ALIAS_KEYS_BY_SOURCE = Object.freeze({
+  paypalCardOriginal: Object.freeze(["paypalCard", "paypalCardCollectible"]),
+  collectiblePaypalCard: Object.freeze(["paypalCard", "paypalCardCollectible"]),
+  lightsEffectOriginal: Object.freeze(["lightsEffect"])
+});
 const ASSET_PIPELINE_STAGE = Object.freeze({
   loaded: "loaded",
   decoded: "decoded",
@@ -369,13 +404,59 @@ async function loadSfxAudioAssetsData() {
 
 function waitForIdleSlice(timeoutMs = ASSET_IDLE_TIMEOUT_MS) {
   return new Promise((resolve) => {
-    if (typeof globalThis.requestIdleCallback === "function") {
-      globalThis.requestIdleCallback(() => resolve(), { timeout: timeoutMs });
+    runTaskAtIdle(resolve, timeoutMs);
+  });
+}
+
+function runTaskAtIdle(task, timeoutMs = ASSET_IDLE_TIMEOUT_MS) {
+  if (typeof task !== "function") {
+    return;
+  }
+
+  if (typeof globalThis.requestIdleCallback === "function") {
+    globalThis.requestIdleCallback(() => task(), { timeout: timeoutMs });
+    return;
+  }
+
+  setTimeout(task, 0);
+}
+
+function buildRendererPrewarmImageQueue(imageKeys = null) {
+  const imageMap = state?.resources?.images || {};
+  const available = new Set(Object.keys(imageMap));
+  if (available.size === 0) {
+    return [];
+  }
+
+  const queue = [];
+  const addKey = (key) => {
+    if (!available.has(key)) {
       return;
     }
+    queue.push(key);
+    available.delete(key);
+  };
 
-    setTimeout(() => resolve(), 0);
-  });
+  const seededKeys =
+    Array.isArray(imageKeys) && imageKeys.length > 0
+      ? imageKeys
+      : RENDERER_PREWARM_IMAGE_PRIORITY_KEYS;
+
+  for (const key of seededKeys) {
+    addKey(key);
+    const aliasKeys = RENDERER_PREWARM_ALIAS_KEYS_BY_SOURCE[key] || [];
+    for (const aliasKey of aliasKeys) {
+      addKey(aliasKey);
+    }
+  }
+
+  if (!Array.isArray(imageKeys) || imageKeys.length === 0) {
+    for (const key of available) {
+      queue.push(key);
+    }
+  }
+
+  return queue;
 }
 
 function trackAssetStage(assetKey, stage, group = "runtime") {
@@ -1292,7 +1373,7 @@ function scheduleUiPrewarm({ flyingPoolSize = 14 } = {}) {
   });
 }
 
-function runRendererPrewarmNow(reason = "runtime") {
+function runRendererPrewarmNow(reason = "runtime", { imageKeys = null } = {}) {
   const renderer = activeRenderer;
   if (!renderer?.prewarm) {
     state.assetPipeline.pendingRendererPrewarm = true;
@@ -1302,8 +1383,27 @@ function runRendererPrewarmNow(reason = "runtime") {
   state.assetPipeline.pendingRendererPrewarm = false;
   try {
     const viewportState = viewportManager.getState();
+    const imageMap = state.resources.images || {};
+    let prewarmState = state;
+
+    if (Array.isArray(imageKeys) && imageKeys.length > 0) {
+      const scopedImages = Object.create(null);
+      for (const key of imageKeys) {
+        const image = imageMap[key];
+        if (!image) {
+          continue;
+        }
+        scopedImages[key] = image;
+      }
+
+      if (Object.keys(scopedImages).length === 0) {
+        return true;
+      }
+      prewarmState = { resources: { images: scopedImages } };
+    }
+
     renderer.prewarm({
-      state,
+      state: prewarmState,
       layoutState: viewportState.layoutState || null
     });
     return true;
@@ -1313,19 +1413,54 @@ function runRendererPrewarmNow(reason = "runtime") {
   }
 }
 
-function scheduleRendererPrewarm({ idle = true, timeoutMs = 250, reason = "runtime" } = {}) {
+function scheduleRendererPrewarm({
+  idle = true,
+  timeoutMs = RENDERER_PREWARM_IDLE_TIMEOUT_MS,
+  reason = "runtime",
+  imageKeys = null,
+  batchSize = RENDERER_PREWARM_IMAGE_BATCH_SIZE
+} = {}) {
+  const queue = buildRendererPrewarmImageQueue(imageKeys);
+
   if (!idle) {
+    if (queue.length > 0) {
+      return Promise.resolve(runRendererPrewarmNow(reason, { imageKeys: queue }));
+    }
     return Promise.resolve(runRendererPrewarmNow(reason));
   }
 
   return new Promise((resolve) => {
-    const run = () => resolve(runRendererPrewarmNow(reason));
-    if (typeof globalThis.requestIdleCallback === "function") {
-      globalThis.requestIdleCallback(run, { timeout: timeoutMs });
+    if (queue.length === 0) {
+      runTaskAtIdle(() => resolve(runRendererPrewarmNow(reason)), timeoutMs);
       return;
     }
 
-    setTimeout(run, 0);
+    const safeBatchSize = Math.max(1, Math.round(batchSize));
+    let cursor = 0;
+    let allChunksOk = true;
+
+    const runNextChunk = () => {
+      const chunkKeys = queue.slice(cursor, cursor + safeBatchSize);
+      cursor += chunkKeys.length;
+      const chunkOk = runRendererPrewarmNow(`${reason}:chunk`, {
+        imageKeys: chunkKeys
+      });
+      allChunksOk = allChunksOk && chunkOk;
+
+      if (!chunkOk && !activeRenderer?.prewarm) {
+        resolve(false);
+        return;
+      }
+
+      if (cursor >= queue.length) {
+        resolve(allChunksOk);
+        return;
+      }
+
+      runTaskAtIdle(runNextChunk, timeoutMs);
+    };
+
+    runTaskAtIdle(runNextChunk, timeoutMs);
   });
 }
 
@@ -1500,8 +1635,10 @@ async function warmDeferredAssets() {
     try {
       rendererPrewarmed = await scheduleRendererPrewarm({
         idle: true,
-        timeoutMs: 260,
-        reason: "deferred"
+        timeoutMs: RENDERER_PREWARM_IDLE_TIMEOUT_MS,
+        reason: "deferred",
+        imageKeys: Object.keys(deferredImages),
+        batchSize: RENDERER_PREWARM_IMAGE_BATCH_SIZE
       });
       if (rendererPrewarmed) {
         markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.gpuReady, "deferred");
