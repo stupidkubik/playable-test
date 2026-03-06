@@ -485,7 +485,19 @@ export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function playerHitbox(player, metrics = null) {
+function writeHitbox(target, x, y, width, height) {
+  if (target) {
+    target.x = x;
+    target.y = y;
+    target.width = width;
+    target.height = height;
+    return target;
+  }
+
+  return { x, y, width, height };
+}
+
+export function playerHitbox(player, metrics = null, out = null) {
   const scaleX = metricOrDefault(metrics, "playerHitboxScaleX", HITBOX_CONFIG.playerScaleX);
   const scaleY = metricOrDefault(metrics, "playerHitboxScaleY", HITBOX_CONFIG.playerScaleY);
   const offsetRatioX = metricOrDefault(metrics, "playerHitboxOffsetX", HITBOX_CONFIG.playerOffsetX);
@@ -495,15 +507,10 @@ export function playerHitbox(player, metrics = null) {
   const offsetX = (player.width - width) / 2 + player.width * offsetRatioX;
   const offsetY = player.height - height + player.height * offsetRatioY;
 
-  return {
-    x: player.x + offsetX,
-    y: player.y + offsetY,
-    width,
-    height
-  };
+  return writeHitbox(out, player.x + offsetX, player.y + offsetY, width, height);
 }
 
-export function enemyHitbox(enemy, metrics = null) {
+export function enemyHitbox(enemy, metrics = null, out = null) {
   const scaleX = metricOrDefault(metrics, "enemyHitboxScaleX", HITBOX_CONFIG.enemyScaleX);
   const scaleY = metricOrDefault(metrics, "enemyHitboxScaleY", HITBOX_CONFIG.enemyScaleY);
   const offsetRatioX = metricOrDefault(metrics, "enemyHitboxOffsetX", HITBOX_CONFIG.enemyOffsetX);
@@ -513,22 +520,18 @@ export function enemyHitbox(enemy, metrics = null) {
   const offsetX = (enemy.width - width) / 2 + enemy.width * offsetRatioX;
   const offsetY = enemy.height - height + enemy.height * offsetRatioY;
 
-  return {
-    x: enemy.x + offsetX,
-    y: enemy.y + offsetY,
-    width,
-    height
-  };
+  return writeHitbox(out, enemy.x + offsetX, enemy.y + offsetY, width, height);
 }
 
-export function obstacleHitbox(obstacle, metrics = null) {
+export function obstacleHitbox(obstacle, metrics = null, out = null) {
   const size = Math.max(4, metricOrDefault(metrics, "obstacleHitboxShrink", HITBOX_CONFIG.obstacleShrink));
-  return {
-    x: obstacle.x + size / 2,
-    y: obstacle.y + size / 2,
-    width: Math.max(4, obstacle.width - size),
-    height: Math.max(4, obstacle.height - size)
-  };
+  return writeHitbox(
+    out,
+    obstacle.x + size / 2,
+    obstacle.y + size / 2,
+    Math.max(4, obstacle.width - size),
+    Math.max(4, obstacle.height - size)
+  );
 }
 
 export function collectibleIntersects(playerBox, collectible, metrics = null) {

@@ -1221,6 +1221,13 @@ const state = {
   }
 };
 
+const collisionScratch = {
+  playerBox: { x: 0, y: 0, width: 0, height: 0 },
+  collectiblePlayerBox: { x: 0, y: 0, width: 0, height: 0 },
+  enemyBox: { x: 0, y: 0, width: 0, height: 0 },
+  obstacleBox: { x: 0, y: 0, width: 0, height: 0 }
+};
+
 if (appShell) {
   appShell.dataset.uiMotionPhase = state.uiMotionPhase;
   appShell.dataset.audioProfile = state.audioRuntime.profile;
@@ -3178,25 +3185,26 @@ function collectItem(item) {
 
 function checkCollisions() {
   const logicMetrics = currentLogicMetrics();
-  const playerBox = playerHitbox(state.player, logicMetrics);
+  const playerBox = playerHitbox(state.player, logicMetrics, collisionScratch.playerBox);
   const collectibleTopBoost = logicMetrics.playerCollectibleTopBoost ?? 0;
   const collectibleSideBoost = logicMetrics.playerCollectibleSideBoost ?? 0;
-  const collectiblePlayerBox =
-    collectibleTopBoost > 0 || collectibleSideBoost > 0
-      ? {
-        x: playerBox.x - collectibleSideBoost,
-        y: playerBox.y - collectibleTopBoost,
-        width: playerBox.width + collectibleSideBoost * 2,
-        height: playerBox.height + collectibleTopBoost
-      }
-      : playerBox;
+  let collectiblePlayerBox = playerBox;
+  if (collectibleTopBoost > 0 || collectibleSideBoost > 0) {
+    const boostedBox = collisionScratch.collectiblePlayerBox;
+    boostedBox.x = playerBox.x - collectibleSideBoost;
+    boostedBox.y = playerBox.y - collectibleTopBoost;
+    boostedBox.width = playerBox.width + collectibleSideBoost * 2;
+    boostedBox.height = playerBox.height + collectibleTopBoost;
+    collectiblePlayerBox = boostedBox;
+  }
 
   for (const enemy of state.enemies) {
     if (state.player.invincibilityMs > 0) {
       break;
     }
 
-    if (intersects(playerBox, enemyHitbox(enemy, logicMetrics))) {
+    const enemyBox = enemyHitbox(enemy, logicMetrics, collisionScratch.enemyBox);
+    if (intersects(playerBox, enemyBox)) {
       stressMode.traceGameplayEvent("collision-enemy", "Enemy collision detected", {
         enemyId: enemy.id,
         enemyX: Math.round(enemy.x),
@@ -3212,7 +3220,8 @@ function checkCollisions() {
       break;
     }
 
-    if (intersects(playerBox, obstacleHitbox(obstacle, logicMetrics))) {
+    const obstacleBox = obstacleHitbox(obstacle, logicMetrics, collisionScratch.obstacleBox);
+    if (intersects(playerBox, obstacleBox)) {
       stressMode.traceGameplayEvent("collision-obstacle", "Obstacle collision detected", {
         obstacleId: obstacle.id,
         obstacleX: Math.round(obstacle.x),
@@ -3540,13 +3549,63 @@ function cleanupEntities() {
     ? logicMetrics.cleanupBehindPlayer
     : cleanupMarginX;
   const cleanupMinX = currentCleanupMinX();
-  state.enemies = state.enemies.filter((enemy) => enemy.x + enemy.width > cleanupMinX);
-  state.obstacles = state.obstacles.filter((obstacle) => obstacle.x + obstacle.width > cleanupMinX);
-  state.collectibles = state.collectibles.filter(
-    (collectible) =>
-      !collectible.collected && collectible.x + collectible.width > cleanupMinX
-  );
-  state.warningLabels = state.warningLabels.filter((warning) => warning.x > cleanupMinX - (cleanupBehind * 1.2));
+  const warningMinX = cleanupMinX - (cleanupBehind * 1.2);
+
+  {
+    const enemies = state.enemies;
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < enemies.length; readIndex += 1) {
+      const enemy = enemies[readIndex];
+      if (enemy.x + enemy.width <= cleanupMinX) {
+        continue;
+      }
+      enemies[writeIndex] = enemy;
+      writeIndex += 1;
+    }
+    enemies.length = writeIndex;
+  }
+
+  {
+    const obstacles = state.obstacles;
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < obstacles.length; readIndex += 1) {
+      const obstacle = obstacles[readIndex];
+      if (obstacle.x + obstacle.width <= cleanupMinX) {
+        continue;
+      }
+      obstacles[writeIndex] = obstacle;
+      writeIndex += 1;
+    }
+    obstacles.length = writeIndex;
+  }
+
+  {
+    const collectibles = state.collectibles;
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < collectibles.length; readIndex += 1) {
+      const collectible = collectibles[readIndex];
+      if (collectible.collected || collectible.x + collectible.width <= cleanupMinX) {
+        continue;
+      }
+      collectibles[writeIndex] = collectible;
+      writeIndex += 1;
+    }
+    collectibles.length = writeIndex;
+  }
+
+  {
+    const warnings = state.warningLabels;
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < warnings.length; readIndex += 1) {
+      const warning = warnings[readIndex];
+      if (warning.x <= warningMinX) {
+        continue;
+      }
+      warnings[writeIndex] = warning;
+      writeIndex += 1;
+    }
+    warnings.length = writeIndex;
+  }
 
   if (state.finishLine) {
     const finishGeometry = currentFinishGateGeometry(state.finishLine);
@@ -3616,7 +3675,7 @@ function updateRunning(deltaSeconds, deltaMs) {
     const breakLineX = finishGeometry?.tape?.breakLineX;
 
     if (Number.isFinite(breakLineX)) {
-      const playerBox = playerHitbox(state.player, logicMetrics);
+      const playerBox = playerHitbox(state.player, logicMetrics, collisionScratch.playerBox);
       const playerFrontX = playerBox.x + playerBox.width;
       if (playerFrontX >= breakLineX) {
         startDeceleration();

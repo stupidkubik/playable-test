@@ -5,8 +5,10 @@ import {
   collectibleIntersects,
   computeFinishGateGeometry,
   computeJumpY,
+  enemyHitbox,
   intersects,
   nextSpawnDelay,
+  obstacleHitbox,
   obstacleSpeed,
   playerHitbox,
   scoreStep,
@@ -74,6 +76,24 @@ test("player hitbox collects airborne collectible above head", () => {
   const collectible = { x: 150, y: 450, width: 20, height: 20 };
 
   assert.equal(collectibleIntersects(playerBox, collectible), true);
+});
+
+test("hitbox helpers support optional output object reuse", () => {
+  const player = { x: 100, y: 500, width: 120, height: 200 };
+  const enemy = { x: 300, y: 500, width: 140, height: 180 };
+  const obstacle = { x: 420, y: 620, width: 110, height: 130 };
+
+  const playerOut = { x: 0, y: 0, width: 0, height: 0 };
+  assert.equal(playerHitbox(player, null, playerOut), playerOut);
+  assert.deepEqual(playerOut, playerHitbox(player));
+
+  const enemyOut = { x: 0, y: 0, width: 0, height: 0 };
+  assert.equal(enemyHitbox(enemy, null, enemyOut), enemyOut);
+  assert.deepEqual(enemyOut, enemyHitbox(enemy));
+
+  const obstacleOut = { x: 0, y: 0, width: 0, height: 0 };
+  assert.equal(obstacleHitbox(obstacle, null, obstacleOut), obstacleOut);
+  assert.deepEqual(obstacleOut, obstacleHitbox(obstacle));
 });
 
 test("computeFinishGateGeometry returns stable trigger line and bounds", () => {

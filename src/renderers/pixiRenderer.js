@@ -318,15 +318,6 @@ function frameTextureForSheet(PIXI, frameTextureCache, baseTexture, frame) {
   return texture;
 }
 
-function frameSourceBox(frame) {
-  return {
-    sourceX: frame.sourceX ?? 0,
-    sourceY: frame.sourceY ?? 0,
-    sourceW: frame.sourceW ?? frame.w,
-    sourceH: frame.sourceH ?? frame.h
-  };
-}
-
 function renderOverscanForLayout(layoutState, worldWidth) {
   if (!Number.isFinite(worldWidth) || worldWidth <= 0) {
     return { left: 0, right: 0 };
@@ -1242,15 +1233,18 @@ export function createPixiRenderer(options = {}) {
 
     hideDisplay(nodes.fallback);
 
-    const box = frameSourceBox(frame);
+    const sourceX = frame.sourceX ?? 0;
+    const sourceY = frame.sourceY ?? 0;
+    const sourceW = frame.sourceW ?? frame.w;
+    const sourceH = frame.sourceH ?? frame.h;
     const targetHeight = player.height * 1.58;
-    const drawScale = targetHeight / box.sourceH;
-    const fullWidth = box.sourceW * drawScale;
-    const fullHeight = box.sourceH * drawScale;
+    const drawScale = targetHeight / sourceH;
+    const fullWidth = sourceW * drawScale;
+    const fullHeight = sourceH * drawScale;
     const fullX = player.x + (player.width - fullWidth) * 0.5;
     const fullY = player.y + (player.height - fullHeight);
-    const drawX = fullX + box.sourceX * drawScale;
-    const drawY = fullY + box.sourceY * drawScale;
+    const drawX = fullX + sourceX * drawScale;
+    const drawY = fullY + sourceY * drawScale;
     const drawWidth = frame.w * drawScale;
     const drawHeight = frame.h * drawScale;
     const damagePose = damageReactionPose(player);
@@ -1342,14 +1336,17 @@ export function createPixiRenderer(options = {}) {
       }
 
       const frame = sequence[(frameTick + enemy.animationOffset) % sequence.length];
-      const box = frameSourceBox(frame);
+      const sourceX = frame.sourceX ?? 0;
+      const sourceY = frame.sourceY ?? 0;
+      const sourceW = frame.sourceW ?? frame.w;
+      const sourceH = frame.sourceH ?? frame.h;
       const drawScale = (enemy.scale || 0.44) * 1.12;
-      const fullWidth = box.sourceW * drawScale;
-      const fullHeight = box.sourceH * drawScale;
+      const fullWidth = sourceW * drawScale;
+      const fullHeight = sourceH * drawScale;
       const fullX = enemy.x + (enemy.width - fullWidth) * 0.5;
       const fullY = enemy.y + (enemy.height - fullHeight);
-      const drawX = fullX + (box.sourceW - box.sourceX - frame.w) * drawScale;
-      const drawY = fullY + box.sourceY * drawScale;
+      const drawX = fullX + (sourceW - sourceX - frame.w) * drawScale;
+      const drawY = fullY + sourceY * drawScale;
       const drawWidth = frame.w * drawScale;
       const drawHeight = frame.h * drawScale;
       const frameTexture = frameTextureForSheet(PIXIRef, frameTextureCache, baseTexture, frame);
