@@ -11,6 +11,19 @@
 - Исправлена single-html сборка: трансформ больше не вырезает helper-функции asset warmup из `dist/playable.html`.
 - Добавлено дробление renderer prewarm по idle-слайсам (`batch=1`) для снижения длинных main-thread пиков в low-tier профиле.
 - Упрощён деплой-пайплайн под single-file: удалён Service Worker runtime и связанная сборочная обвязка (`dist/pages` теперь включает только `index.html` и `.nojekyll`).
+- Анимация fly-to-HUD переведена в единый Pixi/WebGL пайплайн:
+  - добавлен отдельный `hudFx` слой в рендерере;
+  - эффекты полёта призов обновляются в game-state и рендерятся через sprite-pool;
+  - legacy DOM fly-layer и связанный CSS удалены; fallback остаётся через `hudPulse`, если эффект не удалось заспавнить.
+- Введён фазовый контроллер DOM-анимаций (`loading/intro/gameplay/end`) для системного снижения compositor-пиков:
+  - бесконечные DOM-анимации (`intro-hand`, `footer-cta`, `end CTA`) теперь включаются только в релевантных фазах;
+  - gameplay-фаза больше не запускает тяжелые циклические UI-анимации поверх WebGL;
+  - `hud` pulse в `uiEffects` ограничен фазой и минимальным интервалом, чтобы не перезапускать CSS-анимацию в каждом тике.
+- Добавлен системный SFX runtime-governor для снижения фризов на iOS и low-tier устройствах:
+  - `playSound` переведён на policy-driven playback (глобальный/key/group cooldown);
+  - введён voice-pool для SFX (без агрессивного `currentTime=0` на одном и том же элементе);
+  - `hit/hurt` объединены через общий `damage`-групповой cooldown, чтобы не запускать двойной звук в один тик;
+  - добавлен runtime-профиль аудио (`default`/`constrained`, override через `?audioProfile=`) и расширенная диагностика причин дропа звука в stress-событиях.
 
 ## 2026-03-02
 

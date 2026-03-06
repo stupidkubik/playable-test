@@ -129,7 +129,7 @@ const confettiTextureKeys = [
 ];
 const CONFETTI_CONFIG = {
   PARTICLE_COUNT: 66,
-  LIFETIME: 5000,
+  LIFETIME: 4200,
   FADE_START: 0.7,
   SCALE_MIN: 0.8,
   SCALE_MAX: 1.5,
@@ -140,15 +140,39 @@ const CONFETTI_CONFIG = {
   SIDE_SPAWN_HEIGHT: 0.7,
   SIDE_SPAWN_SPREAD_Y: 200,
   SECONDARY_BURST_DELAY_MS: 500,
-  SECONDARY_BURST_REPEAT_COUNT: 3,
+  SECONDARY_BURST_REPEAT_COUNT: 2,
   SECONDARY_BURST_COUNT_SCALE: 0.72,
   SECONDARY_BURST_SPREAD_SCALE: 1.18,
+  MAX_ACTIVE_PARTICLES_PORTRAIT: 180,
+  MAX_ACTIVE_PARTICLES_LANDSCAPE: 120,
+  LIFETIME_PORTRAIT_MS: 4200,
+  LIFETIME_LANDSCAPE_MS: 3400,
   GRAVITY: 0.05,
   AIR_RESISTANCE: 0.998,
   WIND_X: 0,
   ROTATION_SPEED_MIN: 0.02,
   ROTATION_SPEED_MAX: 0.1
 };
+const CONFETTI_BURST_SCALE_BY_BUCKET = Object.freeze({
+  portrait_tall: 0.86,
+  portrait_regular: 0.9,
+  portrait_tablet: 0.96,
+  landscape_short: 0.56,
+  landscape_regular: 0.62,
+  landscape_wide: 0.7
+});
+const FLYING_REWARD_CONFIG = Object.freeze({
+  DURATION_MS: 380,
+  MAX_ACTIVE: 8,
+  BASE_SIZE_PX: 40,
+  START_SCALE: 1,
+  END_SCALE: 0.42,
+  END_ALPHA: 0.78,
+  ARC_HEIGHT_MIN: 22,
+  ARC_HEIGHT_MAX: 84,
+  ARC_HEIGHT_DISTANCE_SCALE: 0.16,
+  SPIN_BASE_RAD: Math.PI * 2.2
+});
 const COMBO_POPUP_CONFIG = {
   durationMs: 850,
   risePx: 120,
@@ -188,8 +212,62 @@ const IMAGE_DEFERRED_KEYS = Object.freeze([
 const IMAGE_DEFERRED_KEY_SET = new Set(IMAGE_DEFERRED_KEYS);
 const AUDIO_MUSIC_KEYS = Object.freeze(["music"]);
 const AUDIO_SFX_KEYS = Object.freeze(["jump", "hit", "collect", "hurt", "step", "lose", "win"]);
+const AUDIO_SFX_KEY_SET = new Set(AUDIO_SFX_KEYS);
 const AUDIO_RELOAD_MAX_ATTEMPTS = 2;
 const AUDIO_RELOAD_COOLDOWN_MS = 1000;
+const AUDIO_SFX_GLOBAL_MIN_GAP_MS = 24;
+const AUDIO_RUNTIME_PROFILE = Object.freeze({
+  default: "default",
+  constrained: "constrained"
+});
+const AUDIO_SFX_POLICY_DEFAULT = Object.freeze({
+  cooldownMs: 90,
+  poolSize: 1,
+  dropIfBusy: true,
+  minRestartGapMs: 120,
+  group: null,
+  groupCooldownMs: 0
+});
+const AUDIO_SFX_POLICY_OVERRIDES = Object.freeze({
+  jump: Object.freeze({
+    cooldownMs: 110,
+    poolSize: 1
+  }),
+  step: Object.freeze({
+    cooldownMs: 170,
+    poolSize: 1
+  }),
+  collect: Object.freeze({
+    cooldownMs: 70,
+    poolSize: 2,
+    dropIfBusy: false,
+    minRestartGapMs: 90
+  }),
+  hit: Object.freeze({
+    cooldownMs: 150,
+    poolSize: 1,
+    group: "damage",
+    groupCooldownMs: 170
+  }),
+  hurt: Object.freeze({
+    cooldownMs: 150,
+    poolSize: 1,
+    group: "damage",
+    groupCooldownMs: 170
+  }),
+  lose: Object.freeze({
+    cooldownMs: 520,
+    poolSize: 1,
+    dropIfBusy: false,
+    minRestartGapMs: 140
+  }),
+  win: Object.freeze({
+    cooldownMs: 520,
+    poolSize: 1,
+    dropIfBusy: false,
+    minRestartGapMs: 140
+  })
+});
 const IMAGE_LOAD_TIMEOUT_MS = 8000;
 const DEFERRED_BOOT_WAIT_BUDGET_MS = 2200;
 const DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS = 0;
@@ -263,6 +341,54 @@ function playerCollectSideBoostForBucket(bucket) {
   }
 
   return 0;
+}
+
+function readAudioProfileOverride() {
+  const search = globalThis.location?.search || "";
+  const params = new URLSearchParams(search);
+  const requested = (params.get("audioProfile") || "").trim().toLowerCase();
+
+  if (
+    requested === AUDIO_RUNTIME_PROFILE.default ||
+    requested === AUDIO_RUNTIME_PROFILE.constrained
+  ) {
+    return requested;
+  }
+
+  return null;
+}
+
+function detectConstrainedAudioRuntime() {
+  const navigatorObject = globalThis.navigator;
+  if (!navigatorObject) {
+    return false;
+  }
+
+  const hardwareConcurrency = Number(navigatorObject.hardwareConcurrency || 0);
+  const deviceMemory = Number(navigatorObject.deviceMemory || 0);
+  const userAgent = String(navigatorObject.userAgent || "");
+  const maxTouchPoints = Number(navigatorObject.maxTouchPoints || 0);
+
+  const lowCoreCount =
+    Number.isFinite(hardwareConcurrency) && hardwareConcurrency > 0 && hardwareConcurrency <= 4;
+  const lowMemory =
+    Number.isFinite(deviceMemory) && deviceMemory > 0 && deviceMemory <= 4;
+  const isAppleMobile =
+    /iphone|ipad|ipod/i.test(userAgent) ||
+    (/macintosh/i.test(userAgent) && maxTouchPoints > 1);
+
+  return lowCoreCount || lowMemory || isAppleMobile;
+}
+
+function resolveAudioRuntimeProfile() {
+  const override = readAudioProfileOverride();
+  if (override) {
+    return override;
+  }
+
+  return detectConstrainedAudioRuntime()
+    ? AUDIO_RUNTIME_PROFILE.constrained
+    : AUDIO_RUNTIME_PROFILE.default;
 }
 
 function hasBundledAssetConstants() {
@@ -675,10 +801,20 @@ function createPerfDebugLogger() {
 
 const perfDebugLogger = createPerfDebugLogger();
 const LANDSCAPE_FRAME_INTERVAL_MS = 1000 / 60;
-const LANDSCAPE_MAX_CATCHUP_STEPS = 4;
+// Keep landscape fixed-step updates bounded to avoid catch-up bursts
+// turning into a spiral-of-death on low-tier devices.
+const LANDSCAPE_MAX_CATCHUP_STEPS = 2;
+const LANDSCAPE_MAX_BACKLOG_MS = LANDSCAPE_FRAME_INTERVAL_MS * (LANDSCAPE_MAX_CATCHUP_STEPS + 1);
+const UI_MOTION_PHASE = Object.freeze({
+  loading: "loading",
+  intro: "intro",
+  gameplay: "gameplay",
+  end: "end"
+});
 
 const state = {
   mode: STATES.loading,
+  uiMotionPhase: UI_MOTION_PHASE.loading,
   score: ECONOMY_CONFIG.startBalance,
   bestScore: 0,
   hp: ECONOMY_CONFIG.maxHp,
@@ -733,6 +869,7 @@ const state = {
   confettiBurstTimeoutId: null,
   nextId: 1,
   frozenEnemyAnimationTick: null,
+  flyingRewards: [],
   confettiParticles: [],
   objectUrlPool: [],
   dataUriObjectUrlCache: new Map(),
@@ -747,8 +884,19 @@ const state = {
     pendingRendererPrewarm: false
   },
   deferredAssetsPromise: null,
-  musicPlayRetryRequested: false
+  musicPlayRetryRequested: false,
+  audioRuntime: {
+    profile: resolveAudioRuntimeProfile(),
+    channels: Object.create(null),
+    groupLastPlayAt: Object.create(null),
+    lastSfxPlayAt: Number.NEGATIVE_INFINITY
+  }
 };
+
+if (appShell) {
+  appShell.dataset.uiMotionPhase = state.uiMotionPhase;
+  appShell.dataset.audioProfile = state.audioRuntime.profile;
+}
 
 
 const stressMode = createStressMode(stressConfig, {
@@ -781,6 +929,28 @@ function allocateId() {
 
 function currentLayoutState() {
   return viewportManager.getState().layoutState || null;
+}
+
+function confettiTuningForLayout(layoutState) {
+  const orientation = layoutState?.orientation === "landscape" ? "landscape" : "portrait";
+  const bucketScale = CONFETTI_BURST_SCALE_BY_BUCKET[layoutState?.bucket];
+  const burstScale = Number.isFinite(bucketScale) && bucketScale > 0
+    ? bucketScale
+    : orientation === "landscape"
+      ? 0.62
+      : 0.9;
+
+  return {
+    burstScale,
+    maxActive:
+      orientation === "landscape"
+        ? CONFETTI_CONFIG.MAX_ACTIVE_PARTICLES_LANDSCAPE
+        : CONFETTI_CONFIG.MAX_ACTIVE_PARTICLES_PORTRAIT,
+    lifetimeMs:
+      orientation === "landscape"
+        ? CONFETTI_CONFIG.LIFETIME_LANDSCAPE_MS
+        : CONFETTI_CONFIG.LIFETIME_PORTRAIT_MS
+  };
 }
 
 function currentLogicMetrics() {
@@ -957,9 +1127,33 @@ function setFooterVisible(visible) {
   gameFooter?.classList.toggle("hidden", !visible);
 }
 
+function setUiMotionPhase(nextPhase) {
+  const normalizedPhase = Object.values(UI_MOTION_PHASE).includes(nextPhase)
+    ? nextPhase
+    : UI_MOTION_PHASE.loading;
+
+  if (state.uiMotionPhase === normalizedPhase) {
+    return;
+  }
+
+  state.uiMotionPhase = normalizedPhase;
+  if (appShell) {
+    appShell.dataset.uiMotionPhase = normalizedPhase;
+  }
+}
+
 function showIntroOverlay(message = "Tap to start earning!") {
+  setUiMotionPhase(UI_MOTION_PHASE.intro);
   startCopy.textContent = message;
   startOverlay.classList.add("overlay-visible");
+}
+
+function collectibleImageForType(type) {
+  if (type === "paypalCard") {
+    return state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
+  }
+
+  return state.resources.images.collectibleIcon;
 }
 
 const uiEffects = createUiEffects({
@@ -967,16 +1161,13 @@ const uiEffects = createUiEffects({
   gameWidth: GAME_WIDTH,
   gameHeight: GAME_HEIGHT,
   setFooterVisible,
+  shouldAnimateHudCounter() {
+    return state.uiMotionPhase !== UI_MOTION_PHASE.gameplay;
+  },
   projectWorldToScreen(x, y) {
     return viewportManager.projectWorldToScreen(x, y);
   },
-  getCollectibleImage(type) {
-    if (type === "paypalCard") {
-      return state.resources.images.paypalCardCollectible || state.resources.images.paypalCard;
-    }
-
-    return state.resources.images.collectibleIcon;
-  },
+  getCollectibleImage: collectibleImageForType,
   elements: {
     ctaButton,
     countdownContainer,
@@ -1107,12 +1298,13 @@ async function createImage(source) {
   }
 }
 
-function createAudio(source, volume, loop = false) {
+function createAudio(source, volume, loop = false, key = "") {
   const normalizedSource = normalizeAssetSource(source);
   const audio = new Audio(normalizedSource);
   audio.preload = "auto";
   audio.volume = volume;
   audio.loop = loop;
+  audio.__playableAudioKey = key;
   audio.__playableBaseSource = normalizedSource;
   audio.__playableReloadAttempts = 0;
   audio.__playableLastReloadAt = 0;
@@ -1123,7 +1315,7 @@ function createAudioMap(assetMap) {
   return Object.fromEntries(
     Object.entries(assetMap || {}).map(([key, value]) => [
       key,
-      createAudio(value.url, value.volume, value.loop || false)
+      createAudio(value.url, value.volume, value.loop || false, key)
     ])
   );
 }
@@ -1184,6 +1376,185 @@ function reloadFailedAudio(audio, { force = false } = {}) {
   } catch {
     return false;
   }
+}
+
+function normalizeSfxPoolSize(poolSize) {
+  if (!Number.isFinite(poolSize) || poolSize <= 0) {
+    return 1;
+  }
+
+  return Math.max(1, Math.round(poolSize));
+}
+
+function resolveSfxPolicy(key, profile = AUDIO_RUNTIME_PROFILE.default) {
+  const override = AUDIO_SFX_POLICY_OVERRIDES[key] || {};
+  const defaultPolicy = AUDIO_SFX_POLICY_DEFAULT;
+  const rawPoolSize = Number.isFinite(override.poolSize) ? override.poolSize : defaultPolicy.poolSize;
+  const normalizedPoolSize = normalizeSfxPoolSize(rawPoolSize);
+  const policy = {
+    cooldownMs: Number.isFinite(override.cooldownMs)
+      ? override.cooldownMs
+      : defaultPolicy.cooldownMs,
+    poolSize: normalizedPoolSize,
+    dropIfBusy:
+      typeof override.dropIfBusy === "boolean"
+        ? override.dropIfBusy
+        : defaultPolicy.dropIfBusy,
+    minRestartGapMs: Number.isFinite(override.minRestartGapMs)
+      ? override.minRestartGapMs
+      : defaultPolicy.minRestartGapMs,
+    group: typeof override.group === "string" && override.group.length > 0 ? override.group : defaultPolicy.group,
+    groupCooldownMs: Number.isFinite(override.groupCooldownMs)
+      ? override.groupCooldownMs
+      : defaultPolicy.groupCooldownMs
+  };
+
+  if (profile === AUDIO_RUNTIME_PROFILE.constrained) {
+    policy.poolSize = 1;
+    policy.cooldownMs = Math.max(policy.cooldownMs, 140);
+    policy.groupCooldownMs = Math.max(policy.groupCooldownMs, 180);
+    policy.minRestartGapMs = Math.max(policy.minRestartGapMs, 140);
+    policy.dropIfBusy = true;
+  }
+
+  return policy;
+}
+
+function resetSfxRuntimeState() {
+  const channels = Object.values(state.audioRuntime.channels || {});
+  for (const channel of channels) {
+    for (const voice of channel.voices || []) {
+      const audio = voice.audio;
+      if (!audio) {
+        continue;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch {
+        // Best-effort reset.
+      }
+    }
+  }
+
+  state.audioRuntime.channels = Object.create(null);
+  state.audioRuntime.groupLastPlayAt = Object.create(null);
+  state.audioRuntime.lastSfxPlayAt = Number.NEGATIVE_INFINITY;
+}
+
+function cloneSfxAudioVoice(baseAudio, key) {
+  const baseSource =
+    (typeof baseAudio.__playableBaseSource === "string" && baseAudio.__playableBaseSource) ||
+    baseAudio.currentSrc ||
+    baseAudio.src;
+
+  if (typeof baseSource !== "string" || baseSource.length === 0) {
+    return null;
+  }
+
+  return createAudio(baseSource, baseAudio.volume, false, key);
+}
+
+function createSfxChannel(key, baseAudio) {
+  const policy = resolveSfxPolicy(key, state.audioRuntime.profile);
+  const voices = [];
+  const targetPoolSize = normalizeSfxPoolSize(policy.poolSize);
+
+  for (let index = 0; index < targetPoolSize; index += 1) {
+    const audio = index === 0 ? baseAudio : cloneSfxAudioVoice(baseAudio, key);
+    if (!audio) {
+      continue;
+    }
+    voices.push({
+      audio,
+      lastStartAt: Number.NEGATIVE_INFINITY,
+      playPending: false
+    });
+  }
+
+  if (voices.length === 0) {
+    return null;
+  }
+
+  return {
+    key,
+    baseAudio,
+    policy,
+    voices,
+    nextVoiceIndex: 0,
+    lastPlayAt: Number.NEGATIVE_INFINITY
+  };
+}
+
+function ensureSfxChannel(key) {
+  if (!AUDIO_SFX_KEY_SET.has(key)) {
+    return null;
+  }
+
+  const baseAudio = state.resources.audio[key];
+  if (!baseAudio) {
+    return null;
+  }
+
+  const existingChannel = state.audioRuntime.channels[key];
+  if (existingChannel && existingChannel.baseAudio === baseAudio) {
+    return existingChannel;
+  }
+
+  const nextChannel = createSfxChannel(key, baseAudio);
+  if (!nextChannel) {
+    return null;
+  }
+
+  state.audioRuntime.channels[key] = nextChannel;
+  return nextChannel;
+}
+
+function isSfxVoiceIdle(voice) {
+  if (!voice || voice.playPending) {
+    return false;
+  }
+
+  const audio = voice.audio;
+  return Boolean(audio && (audio.paused || audio.ended));
+}
+
+function pickSfxVoice(channel, now) {
+  if (!channel || !Array.isArray(channel.voices) || channel.voices.length === 0) {
+    return null;
+  }
+
+  const { voices, policy } = channel;
+  const totalVoices = voices.length;
+  for (let offset = 0; offset < totalVoices; offset += 1) {
+    const index = (channel.nextVoiceIndex + offset) % totalVoices;
+    const voice = voices[index];
+    if (!isSfxVoiceIdle(voice)) {
+      continue;
+    }
+
+    channel.nextVoiceIndex = (index + 1) % totalVoices;
+    return voice;
+  }
+
+  if (policy.dropIfBusy) {
+    return null;
+  }
+
+  let fallbackIndex = 0;
+  for (let index = 1; index < totalVoices; index += 1) {
+    if (voices[index].lastStartAt < voices[fallbackIndex].lastStartAt) {
+      fallbackIndex = index;
+    }
+  }
+
+  const fallback = voices[fallbackIndex];
+  if (now - fallback.lastStartAt < policy.minRestartGapMs) {
+    return null;
+  }
+
+  channel.nextVoiceIndex = (fallbackIndex + 1) % totalVoices;
+  return fallback;
 }
 
 async function loadImageElements(assetMap) {
@@ -1274,7 +1645,7 @@ function applyLoadedImageBindings() {
   }
 }
 
-function prewarmUiAssets({ flyingPoolSize = 14 } = {}) {
+function prewarmUiAssets() {
   const images = [
     state.resources.images.collectibleIcon,
     state.resources.images.collectiblePaypalCard,
@@ -1289,13 +1660,12 @@ function prewarmUiAssets({ flyingPoolSize = 14 } = {}) {
   ].filter(Boolean);
 
   return uiEffects.prewarm({
-    images,
-    flyingPoolSize
+    images
   });
 }
 
-function scheduleUiPrewarm({ flyingPoolSize = 14 } = {}) {
-  prewarmUiAssets({ flyingPoolSize }).catch((error) => {
+function scheduleUiPrewarm() {
+  prewarmUiAssets().catch((error) => {
     console.warn("[assets] ui prewarm failed", error);
   });
 }
@@ -1522,7 +1892,7 @@ async function loadResources() {
     console.warn("[assets] critical stage track failed", error);
   }
   // Keep boot path responsive: warmup runs in background after first frame.
-  scheduleUiPrewarm({ flyingPoolSize: 14 });
+  scheduleUiPrewarm();
 
   if (!state.deferredAssetsPromise) {
     state.deferredAssetsPromise = warmDeferredAssets().catch((error) => {
@@ -1543,6 +1913,7 @@ async function warmDeferredAssets() {
 
   if (Object.keys(sfxAudioData).length > 0) {
     Object.assign(state.resources.audio, createAudioMap(sfxAudioData));
+    resetSfxRuntimeState();
   }
   state.audioWarmup.sfxReadyPromise = Promise.resolve();
 
@@ -1557,7 +1928,7 @@ async function warmDeferredAssets() {
     Object.assign(state.resources.images, deferredImages);
     normalizeImageAliases();
     applyLoadedImageBindings();
-    scheduleUiPrewarm({ flyingPoolSize: 18 });
+    scheduleUiPrewarm();
     let rendererPrewarmed = false;
     try {
       rendererPrewarmed = await scheduleRendererPrewarm({
@@ -1582,25 +1953,122 @@ async function warmDeferredAssets() {
 }
 
 function playSound(key) {
-  const sound = state.resources.audio[key];
   const muted = stressMode.isAudioMuted();
-  stressMode.recordSoundStart("sfx", key, {
-    muted,
-    hasAudio: Boolean(sound)
-  });
+  const channel = ensureSfxChannel(key);
+  const hasAudio = Boolean(channel);
+  const runtimeProfile = state.audioRuntime.profile;
 
   if (muted) {
+    stressMode.recordSoundStart("sfx", key, {
+      muted: true,
+      hasAudio,
+      profile: runtimeProfile,
+      started: false,
+      reason: "muted"
+    });
     return;
   }
 
-  if (!sound) {
+  if (!channel) {
+    stressMode.recordSoundStart("sfx", key, {
+      muted: false,
+      hasAudio: false,
+      profile: runtimeProfile,
+      started: false,
+      reason: "missing-audio"
+    });
     return;
   }
 
-  reloadFailedAudio(sound);
-  sound.currentTime = 0;
-  sound.play().catch(() => {
-    // Browser autoplay may block audio until first interaction.
+  const now = performance.now();
+  if (now - state.audioRuntime.lastSfxPlayAt < AUDIO_SFX_GLOBAL_MIN_GAP_MS) {
+    stressMode.recordSoundStart("sfx", key, {
+      muted: false,
+      hasAudio: true,
+      profile: runtimeProfile,
+      started: false,
+      reason: "global-cooldown"
+    });
+    return;
+  }
+
+  const { policy } = channel;
+  if (now - channel.lastPlayAt < policy.cooldownMs) {
+    stressMode.recordSoundStart("sfx", key, {
+      muted: false,
+      hasAudio: true,
+      profile: runtimeProfile,
+      started: false,
+      reason: "key-cooldown",
+      cooldownMs: policy.cooldownMs
+    });
+    return;
+  }
+
+  if (policy.group) {
+    const lastGroupPlayAt = state.audioRuntime.groupLastPlayAt[policy.group] ?? Number.NEGATIVE_INFINITY;
+    if (now - lastGroupPlayAt < policy.groupCooldownMs) {
+      stressMode.recordSoundStart("sfx", key, {
+        muted: false,
+        hasAudio: true,
+        profile: runtimeProfile,
+        started: false,
+        reason: "group-cooldown",
+        group: policy.group,
+        groupCooldownMs: policy.groupCooldownMs
+      });
+      return;
+    }
+  }
+
+  const voice = pickSfxVoice(channel, now);
+  if (!voice) {
+    stressMode.recordSoundStart("sfx", key, {
+      muted: false,
+      hasAudio: true,
+      profile: runtimeProfile,
+      started: false,
+      reason: "pool-busy",
+      poolSize: channel.voices.length
+    });
+    return;
+  }
+
+  const audio = voice.audio;
+  reloadFailedAudio(audio);
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // Some browsers can throw while audio is switching state.
+  }
+
+  channel.lastPlayAt = now;
+  voice.lastStartAt = now;
+  state.audioRuntime.lastSfxPlayAt = now;
+  if (policy.group) {
+    state.audioRuntime.groupLastPlayAt[policy.group] = now;
+  }
+
+  const playAttempt = audio.play();
+  if (playAttempt && typeof playAttempt.then === "function") {
+    voice.playPending = true;
+    playAttempt
+      .catch(() => {
+        // Browser autoplay may block audio until first interaction.
+      })
+      .finally(() => {
+        voice.playPending = false;
+      });
+  } else {
+    voice.playPending = false;
+  }
+
+  stressMode.recordSoundStart("sfx", key, {
+    muted: false,
+    hasAudio: true,
+    profile: runtimeProfile,
+    started: true,
+    poolSize: channel.voices.length
   });
 }
 
@@ -1660,6 +2128,41 @@ function stopMusic() {
   state.musicPlayPending = false;
   music.pause();
   music.currentTime = 0;
+}
+
+function stopAllSfx() {
+  const channels = Object.values(state.audioRuntime.channels || {});
+  for (const channel of channels) {
+    for (const voice of channel.voices || []) {
+      voice.playPending = false;
+      const audio = voice.audio;
+      if (!audio) {
+        continue;
+      }
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch {
+        // Best-effort reset.
+      }
+    }
+  }
+
+  for (const key of AUDIO_SFX_KEYS) {
+    const audio = state.resources.audio[key];
+    if (!audio) {
+      continue;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {
+      // Best-effort reset.
+    }
+  }
+
+  state.audioRuntime.groupLastPlayAt = Object.create(null);
+  state.audioRuntime.lastSfxPlayAt = Number.NEGATIVE_INFINITY;
 }
 
 function clearScheduledConfettiBurst() {
@@ -1786,6 +2289,7 @@ function resetWorld() {
   state.skyOffset = 0;
   state.groundOffset = 0;
   state.frozenEnemyAnimationTick = null;
+  state.flyingRewards = [];
   state.confettiParticles = [];
   state.comboPopups = [];
   state.collectComboStreak = 0;
@@ -1801,6 +2305,7 @@ function resetWorld() {
   state.ui.score = Number.NaN;
   state.ui.hp = -1;
   stopMusic();
+  stopAllSfx();
 
   hideOverlays();
   setFooterVisible(true);
@@ -1818,7 +2323,9 @@ function startRun(options = {}) {
   }
 
   hideOverlays();
+  state.flyingRewards = [];
   state.mode = STATES.running;
+  setUiMotionPhase(UI_MOTION_PHASE.gameplay);
   state.isRunning = true;
   state.jumpingEnabled = false;
   if (!skipMusic) {
@@ -1845,6 +2352,7 @@ function resumeFromTutorial(reason = "manual") {
   });
   state.frozenEnemyAnimationTick = null;
   state.mode = STATES.running;
+  setUiMotionPhase(UI_MOTION_PHASE.gameplay);
   state.isRunning = true;
   state.jumpingEnabled = true;
   startJump();
@@ -1853,6 +2361,8 @@ function resumeFromTutorial(reason = "manual") {
 function handleWin() {
   state.isRunning = false;
   state.mode = STATES.endWin;
+  setUiMotionPhase(UI_MOTION_PHASE.end);
+  state.flyingRewards = [];
   resetPlayerPosition();
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
@@ -1863,6 +2373,8 @@ function handleWin() {
 function handleLose() {
   state.isRunning = false;
   state.mode = STATES.endLose;
+  setUiMotionPhase(UI_MOTION_PHASE.end);
+  state.flyingRewards = [];
   resetPlayerPosition();
   state.bestScore = Math.max(state.bestScore, Math.floor(state.score));
   stopMusic();
@@ -1879,6 +2391,7 @@ function triggerTutorialPause() {
   state.tutorialTriggered = true;
   state.isRunning = false;
   state.mode = STATES.paused;
+  setUiMotionPhase(UI_MOTION_PHASE.gameplay);
   state.frozenEnemyAnimationTick = Math.floor(performance.now() / 100);
 }
 
@@ -2270,7 +2783,10 @@ function collectItem(item) {
   };
   item.collected = true;
   state.score += getCollectibleValue(item.collectibleType);
-  uiEffects.animateFlyingCollectible(from, item.collectibleType);
+  const spawnedFlyingReward = spawnFlyingReward(from, item.collectibleType);
+  if (!spawnedFlyingReward) {
+    uiEffects.pulseHudCounter();
+  }
   registerCollectCombo(from);
   playSound("collect");
 }
@@ -2354,9 +2870,15 @@ function confettiTextures() {
     .filter(Boolean);
 }
 
-function spawnConfettiParticle(textures, x, y, angleRadians, spreadRadians) {
+function spawnConfettiParticle(textures, x, y, angleRadians, spreadRadians, tuning = null) {
   if (textures.length === 0) {
-    return;
+    return false;
+  }
+
+  const maxActiveParticles =
+    tuning?.maxActive ?? CONFETTI_CONFIG.MAX_ACTIVE_PARTICLES_PORTRAIT;
+  if (state.confettiParticles.length >= maxActiveParticles) {
+    return false;
   }
 
   const image = textures[Math.floor(Math.random() * textures.length)];
@@ -2380,24 +2902,33 @@ function spawnConfettiParticle(textures, x, y, angleRadians, spreadRadians) {
       CONFETTI_CONFIG.SCALE_MIN +
       Math.random() * (CONFETTI_CONFIG.SCALE_MAX - CONFETTI_CONFIG.SCALE_MIN),
     lifetime: 0,
-    maxLifetime: CONFETTI_CONFIG.LIFETIME,
+    maxLifetime: tuning?.lifetimeMs ?? CONFETTI_CONFIG.LIFETIME,
     alpha: 1
   });
+  return true;
 }
 
-function burstConfettiSide(x, y, angleDeg, textures, countScale = 1, spreadScale = 1) {
+function burstConfettiSide(x, y, angleDeg, textures, tuning, countScale = 1, spreadScale = 1) {
   const angleRadians = (angleDeg * Math.PI) / 180;
   const spreadRadians = (CONFETTI_CONFIG.BURST_ANGLE_SPREAD * Math.PI * spreadScale) / 180;
-  const particleCount = Math.max(1, Math.round(CONFETTI_CONFIG.PARTICLE_COUNT * countScale));
+  const burstScale = tuning?.burstScale ?? 1;
+  const particleCount = Math.max(
+    1,
+    Math.round(CONFETTI_CONFIG.PARTICLE_COUNT * burstScale * countScale)
+  );
 
   for (let i = 0; i < particleCount; i += 1) {
-    spawnConfettiParticle(
+    const spawned = spawnConfettiParticle(
       textures,
       x,
       y + (Math.random() - 0.5) * CONFETTI_CONFIG.SIDE_SPAWN_SPREAD_Y,
       angleRadians,
-      spreadRadians
+      spreadRadians,
+      tuning
     );
+    if (!spawned) {
+      break;
+    }
   }
 }
 
@@ -2409,10 +2940,17 @@ function triggerFinishConfetti() {
     return;
   }
 
+  const confettiTuning = confettiTuningForLayout(currentLayoutState());
   const logicMetrics = currentLogicMetrics();
   const spawnY = logicMetrics.worldHeight * CONFETTI_CONFIG.SIDE_SPAWN_HEIGHT;
-  burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures);
-  burstConfettiSide(logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -110, textures);
+  burstConfettiSide(CONFETTI_CONFIG.SIDE_MARGIN, spawnY, -70, textures, confettiTuning);
+  burstConfettiSide(
+    logicMetrics.worldWidth - CONFETTI_CONFIG.SIDE_MARGIN,
+    spawnY,
+    -110,
+    textures,
+    confettiTuning
+  );
 
   let remainingBursts = CONFETTI_CONFIG.SECONDARY_BURST_REPEAT_COUNT;
   const runFollowupBurst = () => {
@@ -2422,6 +2960,7 @@ function triggerFinishConfetti() {
       followupY,
       -66,
       textures,
+      confettiTuning,
       CONFETTI_CONFIG.SECONDARY_BURST_COUNT_SCALE,
       CONFETTI_CONFIG.SECONDARY_BURST_SPREAD_SCALE
     );
@@ -2430,6 +2969,7 @@ function triggerFinishConfetti() {
       followupY,
       -114,
       textures,
+      confettiTuning,
       CONFETTI_CONFIG.SECONDARY_BURST_COUNT_SCALE,
       CONFETTI_CONFIG.SECONDARY_BURST_SPREAD_SCALE
     );
@@ -2444,6 +2984,132 @@ function triggerFinishConfetti() {
   };
 
   state.confettiBurstTimeoutId = setTimeout(runFollowupBurst, CONFETTI_CONFIG.SECONDARY_BURST_DELAY_MS);
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, value));
+}
+
+function screenPointToRender(screenX, screenY) {
+  const viewportState = viewportManager.getState();
+  const viewportRect = viewportState?.viewportPageRect;
+  if (
+    Number.isFinite(viewportRect?.width) &&
+    viewportRect.width > 0 &&
+    Number.isFinite(viewportRect?.height) &&
+    viewportRect.height > 0
+  ) {
+    return {
+      x: ((screenX - viewportRect.left) / viewportRect.width) * GAME_WIDTH,
+      y: ((screenY - viewportRect.top) / viewportRect.height) * GAME_HEIGHT
+    };
+  }
+
+  const fallbackWidth = globalThis.innerWidth || GAME_WIDTH;
+  const fallbackHeight = globalThis.innerHeight || GAME_HEIGHT;
+  return {
+    x: (screenX / fallbackWidth) * GAME_WIDTH,
+    y: (screenY / fallbackHeight) * GAME_HEIGHT
+  };
+}
+
+function hudCounterRenderPoint() {
+  if (!paypalCounter) {
+    return null;
+  }
+
+  const rect = paypalCounter.getBoundingClientRect();
+  if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  const centerX = rect.left + rect.width * 0.5;
+  const centerY = rect.top + rect.height * 0.5;
+  return screenPointToRender(centerX, centerY);
+}
+
+function spawnFlyingReward(from, type = "dollar") {
+  const image = collectibleImageForType(type);
+  if (!image?.src) {
+    return false;
+  }
+
+  if (state.flyingRewards.length >= FLYING_REWARD_CONFIG.MAX_ACTIVE) {
+    return false;
+  }
+
+  const projectedStart = viewportManager.projectWorldToScreen(from.x, from.y);
+  if (!projectedStart || !Number.isFinite(projectedStart.x) || !Number.isFinite(projectedStart.y)) {
+    return false;
+  }
+
+  const target = hudCounterRenderPoint();
+  if (!target) {
+    return false;
+  }
+
+  const start = screenPointToRender(projectedStart.x, projectedStart.y);
+  const distance = Math.hypot(target.x - start.x, target.y - start.y);
+  const arcHeight = clampNumber(
+    distance * FLYING_REWARD_CONFIG.ARC_HEIGHT_DISTANCE_SCALE,
+    FLYING_REWARD_CONFIG.ARC_HEIGHT_MIN,
+    FLYING_REWARD_CONFIG.ARC_HEIGHT_MAX
+  );
+  const spinDirection = Math.random() > 0.5 ? 1 : -1;
+  const spinAmplitude = spinDirection * FLYING_REWARD_CONFIG.SPIN_BASE_RAD * (0.8 + Math.random() * 0.4);
+
+  state.flyingRewards.push({
+    id: allocateId(),
+    image,
+    collectibleType: type,
+    x: start.x,
+    y: start.y,
+    startX: start.x,
+    startY: start.y,
+    targetX: target.x,
+    targetY: target.y,
+    arcHeight,
+    spinAmplitude,
+    baseSizePx: FLYING_REWARD_CONFIG.BASE_SIZE_PX,
+    lifeMs: 0,
+    durationMs: FLYING_REWARD_CONFIG.DURATION_MS,
+    scale: FLYING_REWARD_CONFIG.START_SCALE,
+    alpha: 1,
+    rotation: 0
+  });
+  return true;
+}
+
+function updateFlyingRewards(deltaMs) {
+  if (state.flyingRewards.length === 0) {
+    return;
+  }
+
+  let shouldPulseHudCounter = false;
+  for (let i = state.flyingRewards.length - 1; i >= 0; i -= 1) {
+    const reward = state.flyingRewards[i];
+    reward.lifeMs += deltaMs;
+    const progress = clampNumber(reward.lifeMs / reward.durationMs, 0, 1);
+    const eased = 1 - (1 - progress) ** 3;
+    reward.x = reward.startX + (reward.targetX - reward.startX) * eased;
+    reward.y = reward.startY + (reward.targetY - reward.startY) * eased - Math.sin(Math.PI * eased) * reward.arcHeight;
+    reward.scale = FLYING_REWARD_CONFIG.START_SCALE + (FLYING_REWARD_CONFIG.END_SCALE - FLYING_REWARD_CONFIG.START_SCALE) * eased;
+    reward.alpha = 1 - (1 - FLYING_REWARD_CONFIG.END_ALPHA) * eased;
+    reward.rotation = reward.spinAmplitude * eased;
+
+    if (progress >= 1) {
+      state.flyingRewards.splice(i, 1);
+      shouldPulseHudCounter = true;
+    }
+  }
+
+  if (shouldPulseHudCounter) {
+    uiEffects.pulseHudCounter();
+  }
 }
 
 function updateConfetti(deltaMs) {
@@ -2612,6 +3278,9 @@ function render(elapsedSeconds) {
 }
 
 function update(deltaSeconds, deltaMs) {
+  measureStressSection("updateFlyingRewards", () => {
+    updateFlyingRewards(deltaMs);
+  });
   measureStressSection("updateConfetti", () => {
     updateConfetti(deltaMs);
   });
@@ -2653,11 +3322,18 @@ function gameLoop(timestamp) {
 
   if (useLandscapeCap) {
     updateIterations = 0;
-
-    while (elapsedMs >= LANDSCAPE_FRAME_INTERVAL_MS && updateIterations < LANDSCAPE_MAX_CATCHUP_STEPS) {
-      elapsedMs -= LANDSCAPE_FRAME_INTERVAL_MS;
-      updateIterations += 1;
+    if (elapsedMs > LANDSCAPE_MAX_BACKLOG_MS) {
+      const droppedBacklogSteps = Math.floor(
+        (elapsedMs - LANDSCAPE_MAX_BACKLOG_MS) / LANDSCAPE_FRAME_INTERVAL_MS
+      );
+      if (droppedBacklogSteps > 0) {
+        stressMode.recordRafSkip(droppedBacklogSteps);
+      }
+      elapsedMs = LANDSCAPE_MAX_BACKLOG_MS;
     }
+
+    const availableSteps = Math.floor(elapsedMs / LANDSCAPE_FRAME_INTERVAL_MS);
+    updateIterations = Math.min(availableSteps, LANDSCAPE_MAX_CATCHUP_STEPS);
 
     if (updateIterations === 0) {
       stressMode.recordRafSkip();
@@ -2665,12 +3341,12 @@ function gameLoop(timestamp) {
       return;
     }
 
-    if (elapsedMs >= LANDSCAPE_FRAME_INTERVAL_MS) {
-      const droppedCatchupSteps = Math.floor(elapsedMs / LANDSCAPE_FRAME_INTERVAL_MS);
+    const droppedCatchupSteps = availableSteps - updateIterations;
+    if (droppedCatchupSteps > 0) {
       stressMode.recordRafSkip(droppedCatchupSteps);
-      elapsedMs -= droppedCatchupSteps * LANDSCAPE_FRAME_INTERVAL_MS;
     }
 
+    elapsedMs -= availableSteps * LANDSCAPE_FRAME_INTERVAL_MS;
     state.lastFrameTime = timestamp - elapsedMs;
     stepDeltaMs = LANDSCAPE_FRAME_INTERVAL_MS;
   } else {
@@ -2713,6 +3389,7 @@ function gameLoop(timestamp) {
       obstacles: state.obstacles.length,
       collectibles: state.collectibles.length,
       warnings: state.warningLabels.length,
+      flyingRewards: state.flyingRewards.length,
       comboPopups: state.comboPopups.length,
       hasFinishLine: Boolean(state.finishLine),
       cameraWorldWidth: Math.round(frameLogicMetrics.worldWidth),

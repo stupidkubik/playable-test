@@ -76,6 +76,12 @@ npm run dev
 
 Это снижает time-to-interactive в dev/runtime и отдельно прогревает музыку.
 
+SFX теперь проходят через системный runtime-governor:
+
+- policy-driven playback (global/key/group cooldown);
+- voice-pool вместо постоянного перезапуска одного `Audio`-элемента;
+- runtime-профиль `default|constrained` (автодетект), с ручным override через query `?audioProfile=constrained`.
+
 ### 2. Полноэкранный адаптивный layout (`src/layout/layoutEngine.js`, `src/viewport.js`)
 
 Layout engine на каждом resize/orientation-change считает:

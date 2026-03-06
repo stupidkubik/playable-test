@@ -83,7 +83,8 @@ body {
   justify-content: flex-end;
 }
 
-.paypal-counter.pulse {
+.app-shell[data-ui-motion-phase="intro"] .paypal-counter.pulse,
+.app-shell[data-ui-motion-phase="end"] .paypal-counter.pulse {
   animation: paypal-counter-pulse 0.18s ease-out;
 }
 
@@ -122,41 +123,6 @@ body {
   letter-spacing: 0.01em;
   color: #003087;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-.flying-collectible-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 500;
-  contain: layout style paint;
-}
-
-.flying-collectible {
-  position: fixed;
-  width: 40px;
-  height: 40px;
-  pointer-events: none;
-  z-index: 0;
-  transform: translate(-50%, -50%);
-  will-change: transform, opacity;
-}
-
-.flying-collectible img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  animation: spin-collectible 0.4s linear forwards;
-}
-
-@keyframes spin-collectible {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(720deg);
-  }
 }
 
 canvas {
@@ -229,6 +195,9 @@ canvas {
   width: min(129px, 27vw);
   height: auto;
   transform-origin: 50% 70%;
+}
+
+.app-shell[data-ui-motion-phase="intro"] .intro-hand {
   animation: intro-hand-scale 1.1s ease-in-out infinite;
 }
 
@@ -282,6 +251,9 @@ canvas {
     inset 0 2px rgba(255, 255, 255, 0.42);
   cursor: pointer;
   transform-origin: 50% 50%;
+}
+
+.app-shell[data-ui-motion-phase="intro"] .footer-cta {
   animation: footer-cta-scale 1.05s ease-in-out infinite;
 }
 
@@ -484,6 +456,9 @@ canvas {
     -1px 1px 0 #000,
     1px 1px 0 #000,
     0 2px 3px rgba(0, 0, 0, 0.3);
+}
+
+.app-shell[data-ui-motion-phase="end"] .cta-button {
   animation: pulse-button 1s ease-in-out infinite;
 }
 

@@ -271,6 +271,12 @@ function buildLayerContainers(PIXI, stage) {
     worldRoot.addChild(container);
   }
 
+  const hudFx = new PIXI.Container();
+  hudFx.label = "layer:hudFx";
+  hudFx.sortableChildren = false;
+  layers.hudFx = hudFx;
+  stage.addChild(hudFx);
+
   return layers;
 }
 
@@ -636,13 +642,15 @@ export function createPixiRenderer(options = {}) {
   const groundFallbackState = {
     container: null,
     groundRect: null,
+    stripeContainer: null,
     stripes: [],
     stripeCount: 0,
     lastX: 0,
     lastWidth: 0,
     lastHeight: 0,
     lastGroundY: 0,
-    lastOffsetKey: null
+    lastStripeBaseX: Number.NaN,
+    lastStripeY: Number.NaN
   };
 
   const finishState = {
@@ -678,6 +686,9 @@ export function createPixiRenderer(options = {}) {
     nodes: []
   };
   const confettiPool = {
+    sprites: []
+  };
+  const flyingRewardPool = {
     sprites: []
   };
 
@@ -931,8 +942,13 @@ export function createPixiRenderer(options = {}) {
     const groundRect = new PIXIRef.Graphics();
     container.addChild(groundRect);
 
+    const stripeContainer = new PIXIRef.Container();
+    stripeContainer.visible = false;
+    container.addChild(stripeContainer);
+
     groundFallbackState.container = container;
     groundFallbackState.groundRect = groundRect;
+    groundFallbackState.stripeContainer = stripeContainer;
     return groundFallbackState;
   }
 
@@ -942,8 +958,10 @@ export function createPixiRenderer(options = {}) {
     }
 
     const stripe = new PIXIRef.Graphics();
+    stripe.rect(0, 0, 34, 11).fill(0x283f52);
+    stripe.x = index * 56;
     stripe.visible = false;
-    groundFallbackState.container.addChild(stripe);
+    groundFallbackState.stripeContainer?.addChild(stripe);
     groundFallbackState.stripes[index] = stripe;
     return stripe;
   }
@@ -978,31 +996,38 @@ export function createPixiRenderer(options = {}) {
     }
 
     const offset = sceneState?.groundOffset || 0;
-    const stripeOffset = offset % 56;
+    const stripeOffset = positiveModulo(offset, 56);
     const stripeCount = Math.ceil(renderWorldWidth / 56) + 4;
-    if (
-      groundFallbackState.lastOffsetKey === stripeOffset &&
-      groundFallbackState.stripeCount === stripeCount &&
-      groundFallbackState.lastX === renderWorldX &&
-      stripeCount > 0
-    ) {
-      return;
+    if (groundFallbackState.stripeCount !== stripeCount) {
+      for (let i = 0; i < stripeCount; i += 1) {
+        const stripe = ensureGroundStripe(i);
+        visibleDisplay(stripe, true);
+      }
+
+      for (let i = stripeCount; i < groundFallbackState.stripes.length; i += 1) {
+        hideDisplay(groundFallbackState.stripes[i]);
+      }
+
+      groundFallbackState.stripeCount = stripeCount;
     }
 
-    for (let i = 0; i < stripeCount; i += 1) {
-      const stripe = ensureGroundStripe(i);
-      const x = renderWorldX + (i - 1) * 56 - stripeOffset;
-      stripe.clear();
-      stripe.rect(x, groundY + 42, 34, 11).fill(0x283f52);
-      visibleDisplay(stripe, true);
-    }
+    if (stripeCount > 0 && groundFallbackState.stripeContainer) {
+      const stripeBaseX = renderWorldX - stripeOffset - 56;
+      const stripeY = groundY + 42;
 
-    for (let i = stripeCount; i < groundFallbackState.stripes.length; i += 1) {
-      hideDisplay(groundFallbackState.stripes[i]);
-    }
+      if (groundFallbackState.lastStripeBaseX !== stripeBaseX) {
+        groundFallbackState.stripeContainer.x = stripeBaseX;
+        groundFallbackState.lastStripeBaseX = stripeBaseX;
+      }
+      if (groundFallbackState.lastStripeY !== stripeY) {
+        groundFallbackState.stripeContainer.y = stripeY;
+        groundFallbackState.lastStripeY = stripeY;
+      }
 
-    groundFallbackState.stripeCount = stripeCount;
-    groundFallbackState.lastOffsetKey = stripeOffset;
+      visibleDisplay(groundFallbackState.stripeContainer, true);
+    } else {
+      hideDisplay(groundFallbackState.stripeContainer);
+    }
   }
 
   function ensureDecorSprite(index) {
@@ -1898,6 +1923,54 @@ export function createPixiRenderer(options = {}) {
     }
   }
 
+  function ensureHudFlyingRewardSprite(index) {
+    if (flyingRewardPool.sprites[index]) {
+      return flyingRewardPool.sprites[index];
+    }
+
+    const sprite = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
+    sprite.visible = false;
+    setAnchorIfAvailable(sprite, 0.5, 0.5);
+    layers.hudFx.addChild(sprite);
+    flyingRewardPool.sprites[index] = sprite;
+    return sprite;
+  }
+
+  function syncHudFxLayer(sceneState) {
+    const flyingRewards = sceneState?.flyingRewards || [];
+
+    let visibleCount = 0;
+    for (let i = 0; i < flyingRewards.length; i += 1) {
+      const reward = flyingRewards[i];
+      if (!reward?.image || reward.alpha <= 0) {
+        continue;
+      }
+
+      const texture = textureForImage(PIXIRef, textureCache, reward.image);
+      if (!texture) {
+        continue;
+      }
+
+      const sprite = ensureHudFlyingRewardSprite(visibleCount);
+      visibleCount += 1;
+      sprite.texture = texture;
+      sprite.x = reward.x;
+      sprite.y = reward.y;
+      sprite.rotation = reward.rotation || 0;
+      const textureMaxSide = Math.max(1, texture.width || 1, texture.height || 1);
+      const baseSizePx = Number.isFinite(reward.baseSizePx) && reward.baseSizePx > 0 ? reward.baseSizePx : 40;
+      const dynamicScale = Number.isFinite(reward.scale) ? reward.scale : 1;
+      const renderScale = (baseSizePx / textureMaxSide) * dynamicScale;
+      sprite.scale.set(renderScale, renderScale);
+      sprite.alpha = reward.alpha;
+      visibleDisplay(sprite, true);
+    }
+
+    for (let i = visibleCount; i < flyingRewardPool.sprites.length; i += 1) {
+      hideDisplay(flyingRewardPool.sprites[i]);
+    }
+  }
+
   function ensureTutorialLayer() {
     if (tutorialState.container) {
       return tutorialState;
@@ -2221,6 +2294,10 @@ export function createPixiRenderer(options = {}) {
       hideDisplay(sprite);
     }
 
+    for (const sprite of flyingRewardPool.sprites) {
+      hideDisplay(sprite);
+    }
+
     if (finishState.floor) {
       hideDisplay(finishState.floor);
       hideDisplay(finishState.leftPole);
@@ -2346,6 +2423,7 @@ export function createPixiRenderer(options = {}) {
       syncWarningsLayer(sceneState, elapsedSeconds);
       syncPlayerLayer(sceneState);
       syncFxLayer(sceneState);
+      syncHudFxLayer(sceneState);
       syncComboPopupsLayer(sceneState, layoutState);
       syncTutorialHintLayer(
         sceneState,
