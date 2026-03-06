@@ -216,6 +216,11 @@ const AUDIO_SFX_KEY_SET = new Set(AUDIO_SFX_KEYS);
 const AUDIO_RELOAD_MAX_ATTEMPTS = 2;
 const AUDIO_RELOAD_COOLDOWN_MS = 1000;
 const AUDIO_SFX_GLOBAL_MIN_GAP_MS = 24;
+const AUDIO_SFX_BACKEND = Object.freeze({
+  html: "html",
+  webAudio: "webaudio"
+});
+const AUDIO_WEBAUDIO_RESUME_COOLDOWN_MS = 120;
 const AUDIO_RUNTIME_PROFILE = Object.freeze({
   default: "default",
   constrained: "constrained"
@@ -389,6 +394,319 @@ function resolveAudioRuntimeProfile() {
   return detectConstrainedAudioRuntime()
     ? AUDIO_RUNTIME_PROFILE.constrained
     : AUDIO_RUNTIME_PROFILE.default;
+}
+
+function normalizeAudioSfxBackend(backend) {
+  return backend === AUDIO_SFX_BACKEND.webAudio
+    ? AUDIO_SFX_BACKEND.webAudio
+    : AUDIO_SFX_BACKEND.html;
+}
+
+function setAudioSfxBackend(nextBackend) {
+  const normalizedBackend = normalizeAudioSfxBackend(nextBackend);
+  if (state.audioRuntime.backend === normalizedBackend) {
+    return;
+  }
+
+  state.audioRuntime.backend = normalizedBackend;
+  if (appShell) {
+    appShell.dataset.audioBackend = normalizedBackend;
+  }
+}
+
+function webAudioContextConstructor() {
+  if (typeof globalThis.AudioContext === "function") {
+    return globalThis.AudioContext;
+  }
+
+  if (typeof globalThis.webkitAudioContext === "function") {
+    return globalThis.webkitAudioContext;
+  }
+
+  return null;
+}
+
+function ensureWebAudioContext() {
+  const runtime = state.audioRuntime.webAudio;
+  if (runtime.context) {
+    return runtime.context;
+  }
+
+  const ContextCtor = webAudioContextConstructor();
+  if (!ContextCtor) {
+    return null;
+  }
+
+  let context = null;
+  try {
+    context = new ContextCtor({ latencyHint: "interactive" });
+  } catch {
+    try {
+      context = new ContextCtor();
+    } catch {
+      context = null;
+    }
+  }
+
+  if (!context) {
+    return null;
+  }
+
+  runtime.supported = true;
+  runtime.context = context;
+  try {
+    const gainNode = context.createGain();
+    gainNode.gain.value = 1;
+    gainNode.connect(context.destination);
+    runtime.gainNode = gainNode;
+  } catch {
+    runtime.gainNode = null;
+  }
+
+  return runtime.context;
+}
+
+function disconnectAudioNode(node) {
+  if (!node || typeof node.disconnect !== "function") {
+    return;
+  }
+
+  try {
+    node.disconnect();
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+function decodeAudioDataWithContext(context, arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    if (!context || !arrayBuffer) {
+      reject(new Error("Missing audio decode context or buffer."));
+      return;
+    }
+
+    let settled = false;
+    const finish = (handler, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handler(value);
+    };
+    const onSuccess = (audioBuffer) => finish(resolve, audioBuffer);
+    const onError = (error) =>
+      finish(
+        reject,
+        error instanceof Error ? error : new Error("Failed to decode audio buffer.")
+      );
+
+    try {
+      const clonedBuffer = arrayBuffer.slice(0);
+      const maybePromise = context.decodeAudioData(clonedBuffer, onSuccess, onError);
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.then(onSuccess).catch(onError);
+      }
+    } catch (error) {
+      onError(error);
+    }
+  });
+}
+
+async function fetchAudioArrayBuffer(source) {
+  const response = await fetch(source);
+  if (!response.ok) {
+    throw new Error(`Failed to load audio buffer (${response.status})`);
+  }
+
+  return response.arrayBuffer();
+}
+
+async function warmWebAudioSfxBuffers(assetMap) {
+  const runtime = state.audioRuntime.webAudio;
+  const entries = Object.entries(assetMap || {}).filter(
+    ([key, config]) =>
+      AUDIO_SFX_KEY_SET.has(key) &&
+      typeof config?.url === "string" &&
+      config.url.length > 0
+  );
+
+  if (entries.length === 0) {
+    runtime.buffers = Object.create(null);
+    setAudioSfxBackend(AUDIO_SFX_BACKEND.html);
+    return false;
+  }
+
+  const context = ensureWebAudioContext();
+  if (!context) {
+    runtime.supported = false;
+    runtime.buffers = Object.create(null);
+    setAudioSfxBackend(AUDIO_SFX_BACKEND.html);
+    return false;
+  }
+
+  runtime.supported = true;
+  const decodedBuffers = Object.create(null);
+  let decodedCount = 0;
+
+  const settled = await Promise.allSettled(
+    entries.map(async ([key, config]) => {
+      const arrayBuffer = await fetchAudioArrayBuffer(config.url);
+      const decodedBuffer = await decodeAudioDataWithContext(context, arrayBuffer);
+      return {
+        key,
+        buffer: decodedBuffer,
+        volume: Number.isFinite(config.volume) ? config.volume : 1
+      };
+    })
+  );
+
+  for (const result of settled) {
+    if (result.status !== "fulfilled") {
+      continue;
+    }
+
+    const { key, buffer, volume } = result.value;
+    if (!buffer) {
+      continue;
+    }
+    decodedBuffers[key] = { buffer, volume };
+    decodedCount += 1;
+  }
+
+  runtime.buffers = decodedBuffers;
+  if (decodedCount > 0) {
+    setAudioSfxBackend(AUDIO_SFX_BACKEND.webAudio);
+    return true;
+  }
+
+  setAudioSfxBackend(AUDIO_SFX_BACKEND.html);
+  return false;
+}
+
+async function resumeWebAudioContext({ force = false } = {}) {
+  const runtime = state.audioRuntime.webAudio;
+  const context = runtime.context;
+  if (!context) {
+    return false;
+  }
+
+  if (context.state === "running") {
+    return true;
+  }
+
+  const now = performance.now();
+  if (
+    !force &&
+    Number.isFinite(runtime.lastResumeAttemptAt) &&
+    now - runtime.lastResumeAttemptAt < AUDIO_WEBAUDIO_RESUME_COOLDOWN_MS
+  ) {
+    return false;
+  }
+  runtime.lastResumeAttemptAt = now;
+
+  try {
+    await context.resume();
+  } catch {
+    return context.state === "running";
+  }
+
+  return context.state === "running";
+}
+
+function registerAudioUserGesture() {
+  const runtime = state.audioRuntime.webAudio;
+  runtime.hasUserGesture = true;
+
+  if (state.audioRuntime.backend === AUDIO_SFX_BACKEND.webAudio) {
+    void resumeWebAudioContext({ force: true });
+  }
+}
+
+function stopWebAudioActiveSources() {
+  const runtime = state.audioRuntime.webAudio;
+  const handles = Array.from(runtime.activeSources || []);
+  runtime.activeSources.clear();
+
+  for (const handle of handles) {
+    const source = handle?.source || null;
+    const gainNode = handle?.gainNode || null;
+    if (source && typeof source.stop === "function") {
+      try {
+        source.stop(0);
+      } catch {
+        // Source may have already ended.
+      }
+    }
+    disconnectAudioNode(source);
+    disconnectAudioNode(gainNode);
+  }
+}
+
+function playSoundViaWebAudio(key, channel) {
+  const runtime = state.audioRuntime.webAudio;
+  const context = runtime.context || ensureWebAudioContext();
+  if (!context) {
+    return {
+      started: false,
+      reason: "no-context"
+    };
+  }
+
+  const bufferEntry = runtime.buffers[key];
+  if (!bufferEntry?.buffer) {
+    return {
+      started: false,
+      reason: "missing-buffer"
+    };
+  }
+
+  if (context.state !== "running") {
+    if (runtime.hasUserGesture) {
+      void resumeWebAudioContext();
+    }
+    return {
+      started: false,
+      reason: `context-${context.state}`
+    };
+  }
+
+  let source = null;
+  let gainNode = null;
+  try {
+    source = context.createBufferSource();
+    gainNode = context.createGain();
+    source.buffer = bufferEntry.buffer;
+    const fallbackVolume = Number.isFinite(channel?.baseAudio?.volume) ? channel.baseAudio.volume : 1;
+    gainNode.gain.value = Number.isFinite(bufferEntry.volume) ? bufferEntry.volume : fallbackVolume;
+    source.connect(gainNode);
+
+    if (runtime.gainNode) {
+      gainNode.connect(runtime.gainNode);
+    } else {
+      gainNode.connect(context.destination);
+    }
+
+    const handle = { source, gainNode };
+    runtime.activeSources.add(handle);
+    source.onended = () => {
+      runtime.activeSources.delete(handle);
+      disconnectAudioNode(source);
+      disconnectAudioNode(gainNode);
+    };
+
+    source.start(0);
+    return {
+      started: true,
+      reason: "ok"
+    };
+  } catch {
+    disconnectAudioNode(source);
+    disconnectAudioNode(gainNode);
+    return {
+      started: false,
+      reason: "play-failed"
+    };
+  }
 }
 
 function hasBundledAssetConstants() {
@@ -887,15 +1205,26 @@ const state = {
   musicPlayRetryRequested: false,
   audioRuntime: {
     profile: resolveAudioRuntimeProfile(),
+    backend: AUDIO_SFX_BACKEND.html,
     channels: Object.create(null),
     groupLastPlayAt: Object.create(null),
-    lastSfxPlayAt: Number.NEGATIVE_INFINITY
+    lastSfxPlayAt: Number.NEGATIVE_INFINITY,
+    webAudio: {
+      supported: false,
+      context: null,
+      gainNode: null,
+      hasUserGesture: false,
+      lastResumeAttemptAt: Number.NEGATIVE_INFINITY,
+      buffers: Object.create(null),
+      activeSources: new Set()
+    }
   }
 };
 
 if (appShell) {
   appShell.dataset.uiMotionPhase = state.uiMotionPhase;
   appShell.dataset.audioProfile = state.audioRuntime.profile;
+  appShell.dataset.audioBackend = state.audioRuntime.backend;
 }
 
 
@@ -1420,7 +1749,7 @@ function resolveSfxPolicy(key, profile = AUDIO_RUNTIME_PROFILE.default) {
   return policy;
 }
 
-function resetSfxRuntimeState() {
+function resetSfxRuntimeState({ clearWebAudioBuffers = false } = {}) {
   const channels = Object.values(state.audioRuntime.channels || {});
   for (const channel of channels) {
     for (const voice of channel.voices || []) {
@@ -1435,6 +1764,12 @@ function resetSfxRuntimeState() {
         // Best-effort reset.
       }
     }
+  }
+
+  stopWebAudioActiveSources();
+  if (clearWebAudioBuffers) {
+    state.audioRuntime.webAudio.buffers = Object.create(null);
+    setAudioSfxBackend(AUDIO_SFX_BACKEND.html);
   }
 
   state.audioRuntime.channels = Object.create(null);
@@ -1913,9 +2248,15 @@ async function warmDeferredAssets() {
 
   if (Object.keys(sfxAudioData).length > 0) {
     Object.assign(state.resources.audio, createAudioMap(sfxAudioData));
-    resetSfxRuntimeState();
+    resetSfxRuntimeState({ clearWebAudioBuffers: true });
+    state.audioWarmup.sfxReadyPromise = warmWebAudioSfxBuffers(sfxAudioData).catch((error) => {
+      console.warn("[assets] webaudio sfx warmup failed", error);
+      setAudioSfxBackend(AUDIO_SFX_BACKEND.html);
+      return false;
+    });
+  } else {
+    state.audioWarmup.sfxReadyPromise = Promise.resolve(false);
   }
-  state.audioWarmup.sfxReadyPromise = Promise.resolve();
 
   const deferredImages = await loadImageElements(deferredImageData);
   if (Object.keys(deferredImages).length > 0) {
@@ -1957,12 +2298,14 @@ function playSound(key) {
   const channel = ensureSfxChannel(key);
   const hasAudio = Boolean(channel);
   const runtimeProfile = state.audioRuntime.profile;
+  const activeBackend = state.audioRuntime.backend;
 
   if (muted) {
     stressMode.recordSoundStart("sfx", key, {
       muted: true,
       hasAudio,
       profile: runtimeProfile,
+      backend: activeBackend,
       started: false,
       reason: "muted"
     });
@@ -1974,6 +2317,7 @@ function playSound(key) {
       muted: false,
       hasAudio: false,
       profile: runtimeProfile,
+      backend: activeBackend,
       started: false,
       reason: "missing-audio"
     });
@@ -1986,6 +2330,7 @@ function playSound(key) {
       muted: false,
       hasAudio: true,
       profile: runtimeProfile,
+      backend: activeBackend,
       started: false,
       reason: "global-cooldown"
     });
@@ -1998,6 +2343,7 @@ function playSound(key) {
       muted: false,
       hasAudio: true,
       profile: runtimeProfile,
+      backend: activeBackend,
       started: false,
       reason: "key-cooldown",
       cooldownMs: policy.cooldownMs
@@ -2012,11 +2358,46 @@ function playSound(key) {
         muted: false,
         hasAudio: true,
         profile: runtimeProfile,
+        backend: activeBackend,
         started: false,
         reason: "group-cooldown",
         group: policy.group,
         groupCooldownMs: policy.groupCooldownMs
       });
+      return;
+    }
+  }
+
+  if (activeBackend === AUDIO_SFX_BACKEND.webAudio) {
+    const webAudioPlayback = playSoundViaWebAudio(key, channel);
+    if (webAudioPlayback.started) {
+      channel.lastPlayAt = now;
+      state.audioRuntime.lastSfxPlayAt = now;
+      if (policy.group) {
+        state.audioRuntime.groupLastPlayAt[policy.group] = now;
+      }
+      stressMode.recordSoundStart("sfx", key, {
+        muted: false,
+        hasAudio: true,
+        profile: runtimeProfile,
+        backend: AUDIO_SFX_BACKEND.webAudio,
+        started: true
+      });
+      return;
+    }
+
+    stressMode.recordSoundStart("sfx", key, {
+      muted: false,
+      hasAudio: true,
+      profile: runtimeProfile,
+      backend: AUDIO_SFX_BACKEND.webAudio,
+      started: false,
+      reason: webAudioPlayback.reason
+    });
+
+    // If buffer is missing for a single key, allow fallback to HTMLAudio.
+    // For context/engine issues, avoid hot-path seek/play spikes.
+    if (webAudioPlayback.reason !== "missing-buffer") {
       return;
     }
   }
@@ -2027,6 +2408,7 @@ function playSound(key) {
       muted: false,
       hasAudio: true,
       profile: runtimeProfile,
+      backend: AUDIO_SFX_BACKEND.html,
       started: false,
       reason: "pool-busy",
       poolSize: channel.voices.length
@@ -2067,6 +2449,7 @@ function playSound(key) {
     muted: false,
     hasAudio: true,
     profile: runtimeProfile,
+    backend: AUDIO_SFX_BACKEND.html,
     started: true,
     poolSize: channel.voices.length
   });
@@ -2131,6 +2514,8 @@ function stopMusic() {
 }
 
 function stopAllSfx() {
+  stopWebAudioActiveSources();
+
   const channels = Object.values(state.audioRuntime.channels || {});
   for (const channel of channels) {
     for (const voice of channel.voices || []) {
@@ -3422,6 +3807,7 @@ function handlePrimaryInput(event) {
   }
 
   event.preventDefault();
+  registerAudioUserGesture();
 
   // Music exists in extracted assets, but the first autoplay attempt can be
   // blocked or fail on some browsers. Retry on subsequent user gestures.
@@ -3455,6 +3841,7 @@ function handlePrimaryInput(event) {
 }
 
 function handleMusicActivationFallback() {
+  registerAudioUserGesture();
   if (
     state.mode === STATES.intro ||
     state.mode === STATES.running ||
@@ -3465,6 +3852,7 @@ function handleMusicActivationFallback() {
 }
 
 startBtn.addEventListener("click", () => {
+  registerAudioUserGesture();
   if (state.mode === STATES.intro) {
     playMusic();
     startRun({ skipMusic: true });

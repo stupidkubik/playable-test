@@ -21,9 +21,10 @@
   - `hud` pulse в `uiEffects` ограничен фазой и минимальным интервалом, чтобы не перезапускать CSS-анимацию в каждом тике.
 - Добавлен системный SFX runtime-governor для снижения фризов на iOS и low-tier устройствах:
   - `playSound` переведён на policy-driven playback (глобальный/key/group cooldown);
-  - введён voice-pool для SFX (без агрессивного `currentTime=0` на одном и том же элементе);
+  - введён WebAudio backend для SFX (`AudioBufferSource` one-shot) с unlock по user-gesture и fallback на HTMLAudio;
+  - HTMLAudio voice-pool оставлен как fallback (без агрессивного `currentTime=0` на одном и том же элементе);
   - `hit/hurt` объединены через общий `damage`-групповой cooldown, чтобы не запускать двойной звук в один тик;
-  - добавлен runtime-профиль аудио (`default`/`constrained`, override через `?audioProfile=`) и расширенная диагностика причин дропа звука в stress-событиях.
+  - добавлен runtime-профиль аудио (`default`/`constrained`, override через `?audioProfile=`) и диагностические причины дропа (`context-suspended`, `missing-buffer`, `pool-busy`) в stress-событиях.
 
 ## 2026-03-02
 

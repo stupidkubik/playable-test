@@ -79,7 +79,8 @@ npm run dev
 SFX теперь проходят через системный runtime-governor:
 
 - policy-driven playback (global/key/group cooldown);
-- voice-pool вместо постоянного перезапуска одного `Audio`-элемента;
+- primary backend: WebAudio (`AudioBufferSource` one-shot + unlock/resume по user gesture);
+- fallback backend: HTMLAudio voice-pool (если WebAudio недоступен или буфер не декодирован);
 - runtime-профиль `default|constrained` (автодетект), с ручным override через query `?audioProfile=constrained`.
 
 ### 2. Полноэкранный адаптивный layout (`src/layout/layoutEngine.js`, `src/viewport.js`)
