@@ -383,8 +383,13 @@ function trackAssetStage(assetKey, stage, group = "runtime") {
     return;
   }
 
-  const previous = state?.assetPipeline?.stages?.[assetKey];
-  state.assetPipeline.stages[assetKey] = {
+  const stages = state?.assetPipeline?.stages;
+  if (!stages) {
+    return;
+  }
+
+  const previous = stages[assetKey];
+  stages[assetKey] = {
     key: assetKey,
     group: previous?.group || group,
     stage,
@@ -1440,12 +1445,20 @@ async function loadResources() {
     });
 
   const criticalImages = await loadImageElements(await criticalImagesDataPromise);
-  markAssetBatchStage(criticalImages, ASSET_PIPELINE_STAGE.loaded, "critical");
-  await decodeAssetBatch(criticalImages, { idle: false, group: "critical" });
+  try {
+    markAssetBatchStage(criticalImages, ASSET_PIPELINE_STAGE.loaded, "critical");
+    await decodeAssetBatch(criticalImages, { idle: false, group: "critical" });
+  } catch (error) {
+    console.warn("[assets] critical decode warmup failed", error);
+  }
   Object.assign(state.resources.images, criticalImages);
   normalizeImageAliases();
   applyLoadedImageBindings();
-  markAssetBatchStage(criticalImages, ASSET_PIPELINE_STAGE.usable, "critical");
+  try {
+    markAssetBatchStage(criticalImages, ASSET_PIPELINE_STAGE.usable, "critical");
+  } catch (error) {
+    console.warn("[assets] critical stage track failed", error);
+  }
   // Keep boot path responsive: warmup runs in background after first frame.
   scheduleUiPrewarm({ flyingPoolSize: 14 });
 
@@ -1473,21 +1486,30 @@ async function warmDeferredAssets() {
 
   const deferredImages = await loadImageElements(deferredImageData);
   if (Object.keys(deferredImages).length > 0) {
-    markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.loaded, "deferred");
-    await decodeAssetBatch(deferredImages, { idle: true, group: "deferred" });
+    try {
+      markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.loaded, "deferred");
+      await decodeAssetBatch(deferredImages, { idle: true, group: "deferred" });
+    } catch (error) {
+      console.warn("[assets] deferred decode warmup failed", error);
+    }
     Object.assign(state.resources.images, deferredImages);
     normalizeImageAliases();
     applyLoadedImageBindings();
     scheduleUiPrewarm({ flyingPoolSize: 18 });
-    const rendererPrewarmed = await scheduleRendererPrewarm({
-      idle: true,
-      timeoutMs: 260,
-      reason: "deferred"
-    });
-    if (rendererPrewarmed) {
-      markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.gpuReady, "deferred");
+    let rendererPrewarmed = false;
+    try {
+      rendererPrewarmed = await scheduleRendererPrewarm({
+        idle: true,
+        timeoutMs: 260,
+        reason: "deferred"
+      });
+      if (rendererPrewarmed) {
+        markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.gpuReady, "deferred");
+      }
+      markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.usable, "deferred");
+    } catch (error) {
+      console.warn("[assets] deferred renderer warmup failed", error);
     }
-    markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.usable, "deferred");
     state.assetPipeline.deferredReady = true;
     return;
   }
@@ -2743,7 +2765,8 @@ async function boot() {
     }
     resetWorld();
     stressMode.onBootReady();
-  } catch {
+  } catch (error) {
+    console.error("[boot] runtime initialization failed", error);
     showIntroOverlay("Assets failed to load. Reload and try again.");
   } finally {
     startBtn.disabled = false;
