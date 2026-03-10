@@ -1324,6 +1324,39 @@ const collisionScratch = {
   enemyBox: { x: 0, y: 0, width: 0, height: 0 },
   obstacleBox: { x: 0, y: 0, width: 0, height: 0 }
 };
+const logicMetricsCache = {
+  layoutState: null,
+  gameplayTokens: null,
+  bucket: null,
+  value: {
+    worldWidth: GAME_WIDTH,
+    worldHeight: GAME_HEIGHT,
+    cameraViewWorldWidth: GAME_WIDTH,
+    cameraViewWorldHeight: GAME_HEIGHT,
+    spawnDistancePxPerUnit: GAME_WIDTH,
+    spawnLeadViewportWidth: GAME_WIDTH,
+    spawnAheadFromPlayer: null,
+    cleanupBehindPlayer: null,
+    cleanupMarginX: 120,
+    playerCollectibleTopBoost: playerCollectTopBoostForBucket(null),
+    playerCollectibleSideBoost: playerCollectSideBoostForBucket(null),
+    jumpHeight: PLAYER_CONFIG.jumpHeight
+  }
+};
+const finishGeometryCache = {
+  finishLine: null,
+  x: Number.NaN,
+  anchorX: Number.NaN,
+  tapeBroken: false,
+  tapeBreakProgress: Number.NaN,
+  groundY: Number.NaN,
+  finishFloorPattern: null,
+  finishPoleLeft: null,
+  finishPoleRight: null,
+  finishTapeLeft: null,
+  finishTapeRight: null,
+  geometry: null
+};
 
 if (appShell) {
   appShell.dataset.uiMotionPhase = state.uiMotionPhase;
@@ -1390,21 +1423,35 @@ function currentLogicMetrics() {
   const layoutState = currentLayoutState();
   const gameplayTokens = layoutState?.gameplayTokens;
   const bucket = layoutState?.bucket;
-  return {
-    worldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
-    worldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
-    cameraViewWorldWidth: gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
-    cameraViewWorldHeight: gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT,
-    spawnDistancePxPerUnit:
-      gameplayTokens?.spawnDistancePxPerUnit ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
-    spawnLeadViewportWidth: gameplayTokens?.spawnLeadViewportWidth ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH,
-    spawnAheadFromPlayer: gameplayTokens?.spawnAheadFromPlayer ?? null,
-    cleanupBehindPlayer: gameplayTokens?.cleanupBehindPlayer ?? null,
-    cleanupMarginX: gameplayTokens?.cleanupMarginX ?? 120,
-    playerCollectibleTopBoost: playerCollectTopBoostForBucket(bucket),
-    playerCollectibleSideBoost: playerCollectSideBoostForBucket(bucket),
-    jumpHeight: PLAYER_CONFIG.jumpHeight
-  };
+  const cache = logicMetricsCache;
+  if (
+    cache.layoutState === layoutState &&
+    cache.gameplayTokens === gameplayTokens &&
+    cache.bucket === bucket
+  ) {
+    return cache.value;
+  }
+
+  const value = cache.value;
+  value.worldWidth = gameplayTokens?.runtimeWorldW ?? GAME_WIDTH;
+  value.worldHeight = gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT;
+  value.cameraViewWorldWidth = gameplayTokens?.runtimeWorldW ?? GAME_WIDTH;
+  value.cameraViewWorldHeight = gameplayTokens?.runtimeWorldH ?? GAME_HEIGHT;
+  value.spawnDistancePxPerUnit =
+    gameplayTokens?.spawnDistancePxPerUnit ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH;
+  value.spawnLeadViewportWidth =
+    gameplayTokens?.spawnLeadViewportWidth ?? gameplayTokens?.runtimeWorldW ?? GAME_WIDTH;
+  value.spawnAheadFromPlayer = gameplayTokens?.spawnAheadFromPlayer ?? null;
+  value.cleanupBehindPlayer = gameplayTokens?.cleanupBehindPlayer ?? null;
+  value.cleanupMarginX = gameplayTokens?.cleanupMarginX ?? 120;
+  value.playerCollectibleTopBoost = playerCollectTopBoostForBucket(bucket);
+  value.playerCollectibleSideBoost = playerCollectSideBoostForBucket(bucket);
+  value.jumpHeight = PLAYER_CONFIG.jumpHeight;
+
+  cache.layoutState = layoutState;
+  cache.gameplayTokens = gameplayTokens;
+  cache.bucket = bucket;
+  return value;
 }
 
 function measureStressSection(sectionName, callback) {
@@ -1530,10 +1577,51 @@ function currentPlayerBaseX() {
 
 function currentFinishGateGeometry(finishLine = state.finishLine) {
   if (!finishLine) {
+    finishGeometryCache.finishLine = null;
+    finishGeometryCache.geometry = null;
     return null;
   }
 
-  return computeFinishGateGeometry(finishLine, currentGroundY(), state.resources.images);
+  const groundY = currentGroundY();
+  const images = state.resources.images;
+  const x = Number.isFinite(finishLine?.x) ? finishLine.x : Number.NaN;
+  const anchorX = Number.isFinite(finishLine?.anchorX) ? finishLine.anchorX : Number.NaN;
+  const tapeBroken = Boolean(finishLine?.tapeBroken);
+  const tapeBreakProgress = Number.isFinite(finishLine?.tapeBreakProgress)
+    ? finishLine.tapeBreakProgress
+    : Number.NaN;
+  const cache = finishGeometryCache;
+
+  if (
+    cache.finishLine === finishLine &&
+    cache.x === x &&
+    cache.anchorX === anchorX &&
+    cache.tapeBroken === tapeBroken &&
+    Object.is(cache.tapeBreakProgress, tapeBreakProgress) &&
+    cache.groundY === groundY &&
+    cache.finishFloorPattern === images?.finishFloorPattern &&
+    cache.finishPoleLeft === images?.finishPoleLeft &&
+    cache.finishPoleRight === images?.finishPoleRight &&
+    cache.finishTapeLeft === images?.finishTapeLeft &&
+    cache.finishTapeRight === images?.finishTapeRight
+  ) {
+    return cache.geometry;
+  }
+
+  const geometry = computeFinishGateGeometry(finishLine, groundY, images);
+  cache.finishLine = finishLine;
+  cache.x = x;
+  cache.anchorX = anchorX;
+  cache.tapeBroken = tapeBroken;
+  cache.tapeBreakProgress = tapeBreakProgress;
+  cache.groundY = groundY;
+  cache.finishFloorPattern = images?.finishFloorPattern ?? null;
+  cache.finishPoleLeft = images?.finishPoleLeft ?? null;
+  cache.finishPoleRight = images?.finishPoleRight ?? null;
+  cache.finishTapeLeft = images?.finishTapeLeft ?? null;
+  cache.finishTapeRight = images?.finishTapeRight ?? null;
+  cache.geometry = geometry;
+  return geometry;
 }
 
 function resetPlayerPosition() {
