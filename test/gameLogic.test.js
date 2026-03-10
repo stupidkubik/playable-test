@@ -106,11 +106,8 @@ test("computeFinishGateGeometry returns stable trigger line and bounds", () => {
   assert.ok(geometry.bounds.width > 700);
   assert.ok(geometry.bounds.maxX > finish.x);
   assert.ok(geometry.bounds.minX < finish.x - 300);
-  assert.deepEqual(geometry.tape.left.free, geometry.tape.leftJoin);
-  assert.deepEqual(geometry.tape.right.free, geometry.tape.rightJoin);
-  assert.equal(geometry.tape.linked, true);
-  assert.ok(Math.abs(geometry.tape.leftJoin.x - geometry.tape.rightJoin.x) < 1e-6);
-  assert.ok(Math.abs(geometry.tape.leftJoin.y - geometry.tape.rightJoin.y) < 1e-6);
+  assert.deepEqual(geometry.tape.left.free, geometry.tape.joinPoint);
+  assert.deepEqual(geometry.tape.right.free, geometry.tape.joinPoint);
 });
 
 test("computeFinishGateGeometry trigger line shifts with anchor and keeps intact start geometry", () => {

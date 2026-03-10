@@ -276,9 +276,13 @@ const AUDIO_SFX_POLICY_OVERRIDES = Object.freeze({
 const IMAGE_LOAD_TIMEOUT_MS = 8000;
 const DEFERRED_BOOT_WAIT_BUDGET_MS = 2200;
 const DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS = 0;
+const DEFERRED_BOOT_WAIT_BUDGET_CONSTRAINED_MS = 0;
 const ASSET_DECODE_TIMEOUT_MS = 2600;
 const ASSET_IDLE_TIMEOUT_MS = 200;
+const ASSET_IDLE_TIMEOUT_CONSTRAINED_MS = 80;
 const ASSET_IDLE_DECODE_YIELD_EVERY = 1;
+const ASSET_IDLE_SLICE_BUDGET_MS = 12;
+const ASSET_IDLE_SLICE_BUDGET_CONSTRAINED_MS = 6;
 const RENDERER_PREWARM_IDLE_TIMEOUT_MS = 220;
 const RENDERER_PREWARM_IMAGE_BATCH_SIZE = 1;
 const RENDERER_PREWARM_IMAGE_PRIORITY_KEYS = Object.freeze([
@@ -394,6 +398,43 @@ function resolveAudioRuntimeProfile() {
   return detectConstrainedAudioRuntime()
     ? AUDIO_RUNTIME_PROFILE.constrained
     : AUDIO_RUNTIME_PROFILE.default;
+}
+
+function isConstrainedRuntimeProfile(profile = state?.audioRuntime?.profile) {
+  return profile === AUDIO_RUNTIME_PROFILE.constrained;
+}
+
+function resolveAssetIdleTimeoutMs(profile = state?.audioRuntime?.profile) {
+  return isConstrainedRuntimeProfile(profile)
+    ? ASSET_IDLE_TIMEOUT_CONSTRAINED_MS
+    : ASSET_IDLE_TIMEOUT_MS;
+}
+
+function resolveAssetIdleSliceBudgetMs(profile = state?.audioRuntime?.profile) {
+  return isConstrainedRuntimeProfile(profile)
+    ? ASSET_IDLE_SLICE_BUDGET_CONSTRAINED_MS
+    : ASSET_IDLE_SLICE_BUDGET_MS;
+}
+
+function resolveDeferredBootWaitBudget(
+  isBundledRuntime = hasBundledAssetConstants(),
+  profile = state?.audioRuntime?.profile
+) {
+  if (isBundledRuntime) {
+    return DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS;
+  }
+
+  return isConstrainedRuntimeProfile(profile)
+    ? DEFERRED_BOOT_WAIT_BUDGET_CONSTRAINED_MS
+    : DEFERRED_BOOT_WAIT_BUDGET_MS;
+}
+
+function shouldDeferDeferredWarmupUntilAfterBoot(profile = state?.audioRuntime?.profile) {
+  return isConstrainedRuntimeProfile(profile);
+}
+
+function shouldSkipDeferredRendererPrewarm(profile = state?.audioRuntime?.profile) {
+  return isConstrainedRuntimeProfile(profile);
 }
 
 function normalizeAudioSfxBackend(backend) {
@@ -773,23 +814,63 @@ async function loadSfxAudioAssetsData() {
   return module.ASSET_AUDIO_SFX || {};
 }
 
-function waitForIdleSlice(timeoutMs = ASSET_IDLE_TIMEOUT_MS) {
+function waitForIdleSlice(timeoutMs = resolveAssetIdleTimeoutMs()) {
   return new Promise((resolve) => {
     runTaskAtIdle(resolve, timeoutMs);
   });
 }
 
-function runTaskAtIdle(task, timeoutMs = ASSET_IDLE_TIMEOUT_MS) {
+function runTaskAtIdle(task, timeoutMs = resolveAssetIdleTimeoutMs()) {
   if (typeof task !== "function") {
     return;
   }
 
+  const safeTimeout =
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? timeoutMs
+      : resolveAssetIdleTimeoutMs();
+
   if (typeof globalThis.requestIdleCallback === "function") {
-    globalThis.requestIdleCallback(() => task(), { timeout: timeoutMs });
+    globalThis.requestIdleCallback((deadline) => task(deadline), { timeout: safeTimeout });
     return;
   }
 
   setTimeout(task, 0);
+}
+
+function waitForModeExitLoading(timeoutMs = 1500) {
+  if (state.mode !== STATES.loading) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timerId);
+      resolve();
+    };
+    const check = () => {
+      if (state.mode !== STATES.loading) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(check);
+    };
+    const timerId = setTimeout(finish, timeoutMs);
+    requestAnimationFrame(check);
+  });
+}
+
+async function waitForBootIdle({
+  bootTimeoutMs = 1500,
+  idleTimeoutMs = resolveAssetIdleTimeoutMs()
+} = {}) {
+  await waitForModeExitLoading(bootTimeoutMs);
+  await waitForIdleSlice(idleTimeoutMs);
 }
 
 function buildRendererPrewarmImageQueue(imageKeys = null) {
@@ -916,7 +997,13 @@ async function decodeImageElement(image, timeoutMs = ASSET_DECODE_TIMEOUT_MS) {
 
 async function decodeAssetBatch(
   assetMap,
-  { idle = false, group = "runtime", yieldEvery = ASSET_IDLE_DECODE_YIELD_EVERY } = {}
+  {
+    idle = false,
+    group = "runtime",
+    yieldEvery = ASSET_IDLE_DECODE_YIELD_EVERY,
+    maxSliceMs = resolveAssetIdleSliceBudgetMs(),
+    idleTimeoutMs = resolveAssetIdleTimeoutMs()
+  } = {}
 ) {
   const entries = Object.entries(assetMap || {});
   if (entries.length === 0) {
@@ -924,6 +1011,10 @@ async function decodeAssetBatch(
   }
 
   const safeYieldEvery = Math.max(1, Math.round(yieldEvery));
+  const safeMaxSliceMs =
+    Number.isFinite(maxSliceMs) && maxSliceMs > 0 ? maxSliceMs : Number.POSITIVE_INFINITY;
+  let sliceStartAt = performance.now();
+  let sliceCount = 0;
   for (let index = 0; index < entries.length; index += 1) {
     const [key, image] = entries[index];
     try {
@@ -933,13 +1024,19 @@ async function decodeAssetBatch(
     }
 
     trackAssetStage(key, ASSET_PIPELINE_STAGE.decoded, group);
+    sliceCount += 1;
 
     const shouldYield =
       idle &&
       index < entries.length - 1 &&
-      (index + 1) % safeYieldEvery === 0;
+      (
+        sliceCount >= safeYieldEvery ||
+        performance.now() - sliceStartAt >= safeMaxSliceMs
+      );
     if (shouldYield) {
-      await waitForIdleSlice();
+      await waitForIdleSlice(idleTimeoutMs);
+      sliceStartAt = performance.now();
+      sliceCount = 0;
     }
   }
 }
@@ -2007,8 +2104,10 @@ function prewarmUiAssets() {
 }
 
 function scheduleUiPrewarm() {
-  prewarmUiAssets().catch((error) => {
-    console.warn("[assets] ui prewarm failed", error);
+  runTaskAtIdle(() => {
+    prewarmUiAssets().catch((error) => {
+      console.warn("[assets] ui prewarm failed", error);
+    });
   });
 }
 
@@ -2131,6 +2230,43 @@ async function waitForDeferredAssetsDuringBoot(waitBudgetMs = DEFERRED_BOOT_WAIT
   }
 }
 
+async function warmMusicAfterBoot(music) {
+  if (!music) {
+    return false;
+  }
+
+  await waitForBootIdle();
+
+  state.audioWarmup.musicReady = await waitForAudioReady(music);
+  if (!state.audioWarmup.musicReady && reloadFailedAudio(music, { force: true })) {
+    state.audioWarmup.musicReady = await waitForAudioReady(music, 2000);
+  }
+
+  if (state.musicPlayRetryRequested) {
+    state.musicPlayRetryRequested = false;
+    playMusic();
+  }
+
+  return state.audioWarmup.musicReady;
+}
+
+function startDeferredAssetsWarmup({ deferUntilAfterBoot = false } = {}) {
+  if (state.deferredAssetsPromise) {
+    return state.deferredAssetsPromise;
+  }
+
+  state.deferredAssetsPromise = (async () => {
+    if (deferUntilAfterBoot) {
+      await waitForBootIdle();
+    }
+    return warmDeferredAssets();
+  })().catch((error) => {
+    console.warn("[assets] deferred preload failed", error);
+  });
+
+  return state.deferredAssetsPromise;
+}
+
 function waitForAudioReady(audio, timeoutMs = 1500) {
   if (!audio) {
     return Promise.resolve(false);
@@ -2204,18 +2340,13 @@ async function loadResources() {
       const music = state.resources.audio.music;
       state.audioWarmup.musicReady = Boolean(music && music.readyState >= 2);
       if (music) {
-        state.audioWarmup.musicReady = await waitForAudioReady(music);
-        if (!state.audioWarmup.musicReady && reloadFailedAudio(music, { force: true })) {
-          state.audioWarmup.musicReady = await waitForAudioReady(music, 2000);
-        }
-        if (state.musicPlayRetryRequested) {
-          state.musicPlayRetryRequested = false;
-          playMusic();
-        }
+        return warmMusicAfterBoot(music);
       }
+      return false;
     })
     .catch((error) => {
       console.warn("[assets] music preload failed", error);
+      return false;
     });
 
   const criticalImages = await loadImageElements(await criticalImagesDataPromise);
@@ -2236,18 +2367,15 @@ async function loadResources() {
   // Keep boot path responsive: warmup runs in background after first frame.
   scheduleUiPrewarm();
 
-  if (!state.deferredAssetsPromise) {
-    state.deferredAssetsPromise = warmDeferredAssets().catch((error) => {
-      console.warn("[assets] deferred preload failed", error);
-    });
-  }
-  const deferredWaitBudgetMs = isBundledRuntime
-    ? DEFERRED_BOOT_WAIT_BUDGET_BUNDLED_MS
-    : DEFERRED_BOOT_WAIT_BUDGET_MS;
+  startDeferredAssetsWarmup({
+    deferUntilAfterBoot: shouldDeferDeferredWarmupUntilAfterBoot()
+  });
+  const deferredWaitBudgetMs = resolveDeferredBootWaitBudget(isBundledRuntime);
   await waitForDeferredAssetsDuringBoot(deferredWaitBudgetMs);
 }
 
 async function warmDeferredAssets() {
+  const constrainedRuntime = isConstrainedRuntimeProfile();
   const [deferredImageData, sfxAudioData] = await Promise.all([
     loadDeferredImageAssetsData(),
     loadSfxAudioAssetsData()
@@ -2269,7 +2397,12 @@ async function warmDeferredAssets() {
   if (Object.keys(deferredImages).length > 0) {
     try {
       markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.loaded, "deferred");
-      await decodeAssetBatch(deferredImages, { idle: true, group: "deferred" });
+      await decodeAssetBatch(deferredImages, {
+        idle: true,
+        group: "deferred",
+        maxSliceMs: resolveAssetIdleSliceBudgetMs(),
+        idleTimeoutMs: resolveAssetIdleTimeoutMs()
+      });
     } catch (error) {
       console.warn("[assets] deferred decode warmup failed", error);
     }
@@ -2278,21 +2411,23 @@ async function warmDeferredAssets() {
     applyLoadedImageBindings();
     scheduleUiPrewarm();
     let rendererPrewarmed = false;
-    try {
-      rendererPrewarmed = await scheduleRendererPrewarm({
-        idle: true,
-        timeoutMs: RENDERER_PREWARM_IDLE_TIMEOUT_MS,
-        reason: "deferred",
-        imageKeys: Object.keys(deferredImages),
-        batchSize: RENDERER_PREWARM_IMAGE_BATCH_SIZE
-      });
-      if (rendererPrewarmed) {
-        markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.gpuReady, "deferred");
+    if (!constrainedRuntime) {
+      try {
+        rendererPrewarmed = await scheduleRendererPrewarm({
+          idle: true,
+          timeoutMs: resolveAssetIdleTimeoutMs(),
+          reason: "deferred",
+          imageKeys: Object.keys(deferredImages),
+          batchSize: RENDERER_PREWARM_IMAGE_BATCH_SIZE
+        });
+        if (rendererPrewarmed) {
+          markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.gpuReady, "deferred");
+        }
+      } catch (error) {
+        console.warn("[assets] deferred renderer warmup failed", error);
       }
-      markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.usable, "deferred");
-    } catch (error) {
-      console.warn("[assets] deferred renderer warmup failed", error);
     }
+    markAssetBatchStage(deferredImages, ASSET_PIPELINE_STAGE.usable, "deferred");
     state.assetPipeline.deferredReady = true;
     return;
   }

@@ -323,11 +323,9 @@ export function computeFinishTapeVisualState(finishGeometry, tapeBreakProgress =
 
   return {
     joinOverlapPx,
-    waveEnvelope,
     waveAmplitude,
     waveCycles,
     wavePhase,
-    endpointWave,
     leftRenderFree,
     rightRenderFree,
     breakLineX: (leftRenderFree.x + rightRenderFree.x) * 0.5,
@@ -475,27 +473,14 @@ export function computeFinishGateGeometry(finish, groundY, images = null) {
     tape: {
       breakLineX: tapeBreakLineX,
       breakLineY: tapeBreakLineY,
-      linked: true,
       joinPoint: tapeJoinPoint,
-      leftJoin: leftTapeFreePoint,
-      rightJoin: rightTapeFreePoint,
       left: {
         anchor: leftTapeAnchor,
-        free: leftTapeFreePoint,
-        intactLength: leftTapeIntactLength,
-        height: leftTapeHeight,
-        rotation: leftTapeRotation,
-        controlPoint: leftTapeControlPoint,
-        endPoint: leftTapeEndPoint
+        free: leftTapeFreePoint
       },
       right: {
         anchor: rightTapeAnchor,
-        free: rightTapeFreePoint,
-        intactLength: rightTapeIntactLength,
-        height: rightTapeHeight,
-        rotation: rightTapeRotation,
-        controlPoint: rightTapeControlPoint,
-        endPoint: rightTapeEndPoint
+        free: rightTapeFreePoint
       }
     },
     bounds
