@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   collectibleIntersects,
   computeFinishGateGeometry,
+  computeFinishTapeVisualState,
   computeJumpY,
   enemyHitbox,
   intersects,
@@ -105,19 +106,25 @@ test("computeFinishGateGeometry returns stable trigger line and bounds", () => {
   assert.ok(geometry.bounds.width > 700);
   assert.ok(geometry.bounds.maxX > finish.x);
   assert.ok(geometry.bounds.minX < finish.x - 300);
-  assert.ok(Math.abs(geometry.tape.breakLineX - (finish.x - 312)) < 2);
+  assert.deepEqual(geometry.tape.left.free, geometry.tape.leftJoin);
+  assert.deepEqual(geometry.tape.right.free, geometry.tape.rightJoin);
+  assert.equal(geometry.tape.linked, true);
+  assert.ok(Math.abs(geometry.tape.leftJoin.x - geometry.tape.rightJoin.x) < 1e-6);
+  assert.ok(Math.abs(geometry.tape.leftJoin.y - geometry.tape.rightJoin.y) < 1e-6);
 });
 
-test("computeFinishGateGeometry trigger line shifts with anchor and is independent from broken state", () => {
+test("computeFinishGateGeometry trigger line shifts with anchor and keeps intact start geometry", () => {
   const base = computeFinishGateGeometry({ x: 1200, tapeBroken: false }, 900);
   const shifted = computeFinishGateGeometry({ x: 1320, tapeBroken: false }, 900);
-  const broken = computeFinishGateGeometry({ x: 1200, tapeBroken: true }, 900);
+  const brokenStart = computeFinishGateGeometry({ x: 1200, tapeBroken: true, tapeBreakProgress: 0 }, 900);
 
   assert.ok(base);
   assert.ok(shifted);
-  assert.ok(broken);
+  assert.ok(brokenStart);
   assert.equal(Math.round(shifted.tape.breakLineX - base.tape.breakLineX), 120);
-  assert.equal(Math.round(broken.tape.breakLineX), Math.round(base.tape.breakLineX));
+  assert.deepEqual(brokenStart.tape.left.anchor, base.tape.left.anchor);
+  assert.deepEqual(brokenStart.tape.right.anchor, base.tape.right.anchor);
+  assert.equal(Math.round(brokenStart.tape.breakLineX), Math.round(base.tape.breakLineX));
 });
 
 test("computeFinishGateGeometry animates broken tape pieces with intermediate progress", () => {
@@ -130,4 +137,24 @@ test("computeFinishGateGeometry animates broken tape pieces with intermediate pr
   assert.notEqual(Math.round(mid.sprites.rightTape.rotation * 1000), Math.round(broken.sprites.rightTape.rotation * 1000));
   assert.equal(Math.round(mid.sprites.leftTape.x), Math.round(intact.sprites.leftTape.x));
   assert.equal(Math.round(mid.sprites.leftTape.y), Math.round(intact.sprites.leftTape.y));
+  assert.deepEqual(mid.tape.left.anchor, intact.tape.left.anchor);
+  assert.deepEqual(mid.tape.right.anchor, intact.tape.right.anchor);
+  assert.notDeepEqual(mid.tape.left.free, intact.tape.left.free);
+  assert.notDeepEqual(mid.tape.right.free, intact.tape.right.free);
+});
+
+test("computeFinishTapeVisualState matches intact seam and shifts animated seam to rendered position", () => {
+  const intact = computeFinishGateGeometry({ x: 1000, tapeBroken: false, tapeBreakProgress: 0 }, 900);
+  const mid = computeFinishGateGeometry({ x: 1000, tapeBroken: true, tapeBreakProgress: 0.35 }, 900);
+  const intactVisual = computeFinishTapeVisualState(intact, 0);
+  const midVisual = computeFinishTapeVisualState(mid, 0.35);
+
+  assert.ok(intactVisual && midVisual);
+  assert.equal(intactVisual.waveAmplitude, 0);
+  assert.ok(intactVisual.joinOverlapPx > 0);
+  assert.notDeepEqual(intactVisual.leftRenderFree, intact.tape.left.free);
+  assert.notDeepEqual(intactVisual.rightRenderFree, intact.tape.right.free);
+  assert.notDeepEqual(midVisual.leftRenderFree, mid.tape.left.free);
+  assert.notDeepEqual(midVisual.rightRenderFree, mid.tape.right.free);
+  assert.notEqual(Math.round(midVisual.breakLineY * 1000), Math.round(mid.tape.breakLineY * 1000));
 });

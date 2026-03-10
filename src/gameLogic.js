@@ -41,7 +41,7 @@ export const ECONOMY_CONFIG = Object.freeze({
 });
 
 export const FINISH_CONFIG = Object.freeze({
-  tapeBreakAnimationMs: 1480
+  tapeBreakAnimationMs: 2680
 });
 
 export const STATES = Object.freeze({
@@ -113,33 +113,28 @@ const FINISH_LAYOUT = Object.freeze({
   floorScale: 2,
   floorGroundOffsetY: 84,
   polesGroundOffsetY: 100,
-  leftPoleScale: 1.8,
+  leftPoleScale: 1.65,
   rightPoleScale: 1.35,
-  leftPoleBottomXOffset: -360,
+  leftPoleBottomXOffset: -350,
   rightPoleBottomXOffset: -240,
-  leftPoleBottomYOffset: -36,
+  leftPoleBottomYOffset: -50,
   rightPoleBottomYOffset: 22,
   poleRotation: -Math.PI / 2,
-  tapeScaleX: 1.8,
   tapeScaleY: 1,
-  leftTapeAnchorYOffsetFromPoleTop: 40,
-  rightTapeAnchorXOffsetFromPoleBottom: -24,
-  rightTapeAnchorYOffsetFromPoleTop: 58,
-  leftTapeRotation: 0.4,
-  rightTapeRotation: -2.5,
-  leftTapeBrokenRotation: 1.28,
-  rightTapeBrokenRotation: -3.42,
-  leftTapeBreakWobbleRotation: 0.12,
-  rightTapeBreakWobbleRotation: -0.14,
-  leftTapeBreakDropY: 0,
-  rightTapeBreakDropY: 0,
-  leftTapeBreakDriftX: 0,
-  rightTapeBreakDriftX: 0,
-  leftTapeBreakWobbleDropY: 0,
-  rightTapeBreakWobbleDropY: 0,
-  leftTapeBreakWobbleDriftX: 0,
-  rightTapeBreakWobbleDriftX: 0,
-  tapeBreakWobbleCycles: 1.05
+  leftTapeAnchorXOffsetFromPoleTop: -10,
+  leftTapeAnchorYOffsetFromPoleTop: 30,
+  rightTapeAnchorXOffsetFromPoleBottom: -5,
+  rightTapeAnchorYOffsetFromPoleTop: 30,
+  tapeJoinYOffset: -12,
+  tapeJoinOverlapPx: 6,
+  leftTapeBreakEndXOffset: 0,
+  rightTapeBreakEndXOffset: 0,
+  leftTapeBreakEndYOffset: 120,
+  rightTapeBreakEndYOffset: 120,
+  leftTapeBreakArcX: -28,
+  rightTapeBreakArcX: 28,
+  leftTapeBreakArcY: 48,
+  rightTapeBreakArcY: 48
 });
 
 function finishImageDimension(images, key, axis) {
@@ -168,60 +163,9 @@ function createSpriteGeometry({
   };
 }
 
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function easeOutCubic(t) {
-  const clamped = clamp(t, 0, 1);
-  return 1 - Math.pow(1 - clamped, 3);
-}
-
-function easeOutQuad(t) {
-  const clamped = clamp(t, 0, 1);
-  return 1 - (1 - clamped) * (1 - clamped);
-}
-
-function easeOutSine(t) {
-  const clamped = clamp(t, 0, 1);
-  return Math.sin((clamped * Math.PI) / 2);
-}
-
 function easeInOutSine(t) {
   const clamped = clamp(t, 0, 1);
   return -(Math.cos(Math.PI * clamped) - 1) / 2;
-}
-
-function interpolateKeyframes(keyframes, t) {
-  if (!Array.isArray(keyframes) || keyframes.length === 0) {
-    return 0;
-  }
-
-  const clampedT = clamp(t, 0, 1);
-  const first = keyframes[0];
-  if (clampedT <= first.t) {
-    return first.value;
-  }
-
-  for (let index = 1; index < keyframes.length; index += 1) {
-    const prev = keyframes[index - 1];
-    const next = keyframes[index];
-    if (clampedT <= next.t) {
-      const span = Math.max(1e-6, next.t - prev.t);
-      const localT = (clampedT - prev.t) / span;
-      return lerp(prev.value, next.value, easeInOutSine(localT));
-    }
-  }
-
-  return keyframes[keyframes.length - 1].value;
-}
-
-function dampedOscillation(t, amplitude, cycles) {
-  if (t <= 0 || t >= 1 || amplitude === 0) {
-    return 0;
-  }
-  const envelope = Math.pow(1 - t, 1.15);
-  return Math.sin(t * Math.PI * 2 * cycles) * amplitude * envelope;
 }
 
 function finishTapeBreakProgress(finish) {
@@ -301,6 +245,96 @@ function unionAabbs(boundsList) {
   };
 }
 
+function distanceBetweenPoints(a, b) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function quadraticBezierPoint(start, control, end, t) {
+  const clamped = clamp(t, 0, 1);
+  const inv = 1 - clamped;
+  return {
+    x: inv * inv * start.x + 2 * inv * clamped * control.x + clamped * clamped * end.x,
+    y: inv * inv * start.y + 2 * inv * clamped * control.y + clamped * clamped * end.y
+  };
+}
+
+function extendPointAwayFrom(point, awayFrom, distance) {
+  const dx = point.x - awayFrom.x;
+  const dy = point.y - awayFrom.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= 1e-6 || distance === 0) {
+    return point;
+  }
+
+  return {
+    x: point.x + (dx / length) * distance,
+    y: point.y + (dy / length) * distance
+  };
+}
+
+function offsetPointByPathNormal(startPoint, endPoint, basePoint, distance) {
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= 1e-6 || distance === 0) {
+    return basePoint;
+  }
+
+  return {
+    x: basePoint.x + (-dy / length) * distance,
+    y: basePoint.y + (dx / length) * distance
+  };
+}
+
+export function computeFinishTapeVisualState(finishGeometry, tapeBreakProgress = 0) {
+  if (!finishGeometry?.tape?.left?.anchor || !finishGeometry?.tape?.right?.anchor) {
+    return null;
+  }
+
+  const progress = clamp(tapeBreakProgress, 0, 1);
+  const joinOverlapPx = Math.max(0, 1 - progress * 6) * FINISH_LAYOUT.tapeJoinOverlapPx;
+  const leftRenderFreeBase = extendPointAwayFrom(
+    finishGeometry.tape.left.free,
+    finishGeometry.tape.left.anchor,
+    joinOverlapPx
+  );
+  const rightRenderFreeBase = extendPointAwayFrom(
+    finishGeometry.tape.right.free,
+    finishGeometry.tape.right.anchor,
+    joinOverlapPx
+  );
+  const waveEnvelope = Math.pow(Math.sin(Math.PI * progress), 1.1);
+  const waveAmplitude = waveEnvelope * 20;
+  const waveCycles = 2.2;
+  const wavePhase = progress * Math.PI * 2 * 2;
+  const endpointWave = Math.sin(Math.PI * waveCycles - wavePhase) * waveAmplitude;
+  const leftRenderFree = offsetPointByPathNormal(
+    finishGeometry.tape.left.anchor,
+    leftRenderFreeBase,
+    leftRenderFreeBase,
+    endpointWave
+  );
+  const rightRenderFree = offsetPointByPathNormal(
+    rightRenderFreeBase,
+    finishGeometry.tape.right.anchor,
+    rightRenderFreeBase,
+    endpointWave
+  );
+
+  return {
+    joinOverlapPx,
+    waveEnvelope,
+    waveAmplitude,
+    waveCycles,
+    wavePhase,
+    endpointWave,
+    leftRenderFree,
+    rightRenderFree,
+    breakLineX: (leftRenderFree.x + rightRenderFree.x) * 0.5,
+    breakLineY: (leftRenderFree.y + rightRenderFree.y) * 0.5
+  };
+}
+
 export function computeFinishGateGeometry(finish, groundY, images = null) {
   const anchorX = Number.isFinite(finish?.x) ? finish.x : Number.isFinite(finish?.anchorX) ? finish.anchorX : NaN;
   if (!Number.isFinite(anchorX) || !Number.isFinite(groundY)) {
@@ -313,9 +347,7 @@ export function computeFinishGateGeometry(finish, groundY, images = null) {
   const leftPoleHeight = finishImageDimension(images, "finishPoleLeft", "height") * FINISH_LAYOUT.leftPoleScale;
   const rightPoleWidth = finishImageDimension(images, "finishPoleRight", "width") * FINISH_LAYOUT.rightPoleScale;
   const rightPoleHeight = finishImageDimension(images, "finishPoleRight", "height") * FINISH_LAYOUT.rightPoleScale;
-  const leftTapeWidth = finishImageDimension(images, "finishTapeLeft", "width") * FINISH_LAYOUT.tapeScaleX;
   const leftTapeHeight = finishImageDimension(images, "finishTapeLeft", "height") * FINISH_LAYOUT.tapeScaleY;
-  const rightTapeWidth = finishImageDimension(images, "finishTapeRight", "width") * FINISH_LAYOUT.tapeScaleX;
   const rightTapeHeight = finishImageDimension(images, "finishTapeRight", "height") * FINISH_LAYOUT.tapeScaleY;
 
   const leftPoleBottomX = anchorX + FINISH_LAYOUT.leftPoleBottomXOffset;
@@ -351,74 +383,76 @@ export function computeFinishGateGeometry(finish, groundY, images = null) {
   const leftPoleBounds = spriteAabb(leftPoleSprite);
   const rightPoleBounds = spriteAabb(rightPoleSprite);
   const tapeBreakProgress = finishTapeBreakProgress(finish);
-  const leftTapeRotation = interpolateKeyframes(
-    [
-      { t: 0, value: FINISH_LAYOUT.leftTapeRotation },
-      { t: 0.12, value: FINISH_LAYOUT.leftTapeRotation },
-      { t: 0.28, value: FINISH_LAYOUT.leftTapeRotation + 0.28 },
-      { t: 0.5, value: FINISH_LAYOUT.leftTapeBrokenRotation + 0.55 },
-      { t: 0.72, value: FINISH_LAYOUT.leftTapeBrokenRotation + 0.14 },
-      { t: 0.88, value: FINISH_LAYOUT.leftTapeBrokenRotation - 0.08 },
-      { t: 1, value: FINISH_LAYOUT.leftTapeBrokenRotation }
-    ],
-    tapeBreakProgress
-  );
-  const rightTapeRotation = interpolateKeyframes(
-    [
-      { t: 0, value: FINISH_LAYOUT.rightTapeRotation },
-      { t: 0.12, value: FINISH_LAYOUT.rightTapeRotation },
-      { t: 0.28, value: FINISH_LAYOUT.rightTapeRotation - 0.3 },
-      { t: 0.52, value: FINISH_LAYOUT.rightTapeBrokenRotation - 0.5 },
-      { t: 0.74, value: FINISH_LAYOUT.rightTapeBrokenRotation - 0.12 },
-      { t: 0.89, value: FINISH_LAYOUT.rightTapeBrokenRotation + 0.08 },
-      { t: 1, value: FINISH_LAYOUT.rightTapeBrokenRotation }
-    ],
-    tapeBreakProgress
-  );
-  const leftTapeAnchorBaseX = leftPoleBottomX;
+  const leftTapeAnchorBaseX = leftPoleBottomX + FINISH_LAYOUT.leftTapeAnchorXOffsetFromPoleTop;
   const leftTapeAnchorBaseY = leftPoleBounds.minY + FINISH_LAYOUT.leftTapeAnchorYOffsetFromPoleTop;
   const rightTapeAnchorBaseX = rightPoleBottomX + FINISH_LAYOUT.rightTapeAnchorXOffsetFromPoleBottom;
   const rightTapeAnchorBaseY = rightPoleBounds.minY + FINISH_LAYOUT.rightTapeAnchorYOffsetFromPoleTop;
-  const leftTapeAnchorX = leftTapeAnchorBaseX;
-  const leftTapeAnchorY = leftTapeAnchorBaseY;
-  const rightTapeAnchorX = rightTapeAnchorBaseX;
-  const rightTapeAnchorY = rightTapeAnchorBaseY;
+  const leftTapeAnchor = { x: leftTapeAnchorBaseX, y: leftTapeAnchorBaseY };
+  const rightTapeAnchor = { x: rightTapeAnchorBaseX, y: rightTapeAnchorBaseY };
+  const tapeJoinPoint = {
+    x: (leftTapeAnchor.x + rightTapeAnchor.x) * 0.5,
+    y: (leftTapeAnchor.y + rightTapeAnchor.y) * 0.5 + FINISH_LAYOUT.tapeJoinYOffset
+  };
+  const leftTapeEndPoint = {
+    x: leftTapeAnchor.x + FINISH_LAYOUT.leftTapeBreakEndXOffset,
+    y: leftTapeAnchor.y + FINISH_LAYOUT.leftTapeBreakEndYOffset
+  };
+  const rightTapeEndPoint = {
+    x: rightTapeAnchor.x + FINISH_LAYOUT.rightTapeBreakEndXOffset,
+    y: rightTapeAnchor.y + FINISH_LAYOUT.rightTapeBreakEndYOffset
+  };
+  const leftTapeControlPoint = {
+    x: (tapeJoinPoint.x + leftTapeEndPoint.x) * 0.5 + FINISH_LAYOUT.leftTapeBreakArcX,
+    y: (tapeJoinPoint.y + leftTapeEndPoint.y) * 0.5 + FINISH_LAYOUT.leftTapeBreakArcY
+  };
+  const rightTapeControlPoint = {
+    x: (tapeJoinPoint.x + rightTapeEndPoint.x) * 0.5 + FINISH_LAYOUT.rightTapeBreakArcX,
+    y: (tapeJoinPoint.y + rightTapeEndPoint.y) * 0.5 + FINISH_LAYOUT.rightTapeBreakArcY
+  };
+  const pointAnimationProgress = easeInOutSine(tapeBreakProgress);
+  const leftTapeFreePoint = quadraticBezierPoint(
+    tapeJoinPoint,
+    leftTapeControlPoint,
+    leftTapeEndPoint,
+    pointAnimationProgress
+  );
+  const rightTapeFreePoint = quadraticBezierPoint(
+    tapeJoinPoint,
+    rightTapeControlPoint,
+    rightTapeEndPoint,
+    pointAnimationProgress
+  );
+  const leftTapeIntactLength = distanceBetweenPoints(leftTapeAnchor, leftTapeFreePoint);
+  const rightTapeIntactLength = distanceBetweenPoints(rightTapeAnchor, rightTapeFreePoint);
+  const leftTapeRotation = Math.atan2(
+    leftTapeFreePoint.y - leftTapeAnchor.y,
+    leftTapeFreePoint.x - leftTapeAnchor.x
+  );
+  const rightTapeRotation = Math.atan2(
+    rightTapeAnchor.y - rightTapeFreePoint.y,
+    rightTapeAnchor.x - rightTapeFreePoint.x
+  );
+  const tapeBreakLineX = (leftTapeFreePoint.x + rightTapeFreePoint.x) * 0.5;
+  const tapeBreakLineY = (leftTapeFreePoint.y + rightTapeFreePoint.y) * 0.5;
 
   const leftTapeSprite = createSpriteGeometry({
-    x: leftTapeAnchorX,
-    y: leftTapeAnchorY,
-    width: leftTapeWidth,
+    x: leftTapeAnchor.x,
+    y: leftTapeAnchor.y,
+    width: leftTapeIntactLength,
     height: leftTapeHeight,
     rotation: leftTapeRotation,
     anchorX: 0,
     anchorY: 0
   });
   const rightTapeSprite = createSpriteGeometry({
-    x: rightTapeAnchorX,
-    y: rightTapeAnchorY,
-    width: rightTapeWidth,
+    x: rightTapeAnchor.x,
+    y: rightTapeAnchor.y,
+    width: rightTapeIntactLength,
     height: rightTapeHeight,
     rotation: rightTapeRotation,
-    anchorX: 0,
+    anchorX: 1,
     anchorY: 0
   });
-
-  const leftTapeTriggerSprite = {
-    ...leftTapeSprite,
-    x: leftTapeAnchorBaseX,
-    y: leftTapeAnchorBaseY,
-    rotation: FINISH_LAYOUT.leftTapeRotation
-  };
-  const rightTapeTriggerSprite = {
-    ...rightTapeSprite,
-    x: rightTapeAnchorBaseX,
-    y: rightTapeAnchorBaseY,
-    rotation: FINISH_LAYOUT.rightTapeRotation
-  };
-  const leftTapeJoin = spritePointToWorld(leftTapeTriggerSprite, leftTapeTriggerSprite.width, 0);
-  const rightTapeJoin = spritePointToWorld(rightTapeTriggerSprite, rightTapeTriggerSprite.width, 0);
-  const tapeBreakLineX = (leftTapeJoin.x + rightTapeJoin.x) * 0.5;
-  const tapeBreakLineY = (leftTapeJoin.y + rightTapeJoin.y) * 0.5;
 
   const bounds = unionAabbs([
     spriteAabb(floorSprite),
@@ -441,8 +475,28 @@ export function computeFinishGateGeometry(finish, groundY, images = null) {
     tape: {
       breakLineX: tapeBreakLineX,
       breakLineY: tapeBreakLineY,
-      leftJoin: leftTapeJoin,
-      rightJoin: rightTapeJoin
+      linked: true,
+      joinPoint: tapeJoinPoint,
+      leftJoin: leftTapeFreePoint,
+      rightJoin: rightTapeFreePoint,
+      left: {
+        anchor: leftTapeAnchor,
+        free: leftTapeFreePoint,
+        intactLength: leftTapeIntactLength,
+        height: leftTapeHeight,
+        rotation: leftTapeRotation,
+        controlPoint: leftTapeControlPoint,
+        endPoint: leftTapeEndPoint
+      },
+      right: {
+        anchor: rightTapeAnchor,
+        free: rightTapeFreePoint,
+        intactLength: rightTapeIntactLength,
+        height: rightTapeHeight,
+        rotation: rightTapeRotation,
+        controlPoint: rightTapeControlPoint,
+        endPoint: rightTapeEndPoint
+      }
     },
     bounds
   };

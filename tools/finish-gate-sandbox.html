@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finish Gate Sandbox</title>
+  <style>
+    :root {
+      --viewport-width: 720px;
+      --viewport-height: 1280px;
+      --panel-bg: rgba(11, 18, 32, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text-main: #f5f7fb;
+      --text-dim: #a6b0c4;
+      --accent: #ffd548;
+      --accent-strong: #ffb200;
+      --guide-anchor: #79d0ff;
+      --guide-ground: #9eff9e;
+      --guide-break: #ff7a7a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top, rgba(51, 91, 160, 0.45), transparent 42%),
+        linear-gradient(180deg, #121827 0%, #0b0f18 100%);
+      color: var(--text-main);
+      font-family: Inter, system-ui, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
+      gap: 20px;
+      width: min(1200px, 100%);
+      align-items: start;
+    }
+
+    .panel,
+    .stage-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 22px 50px rgba(0, 0, 0, 0.28);
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .panel h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+
+    .panel p {
+      margin: 0;
+      color: var(--text-dim);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .status-row {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: #171717;
+      font: inherit;
+      font-weight: 700;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    button:hover {
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .control-group {
+      margin-top: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .control {
+      display: grid;
+      gap: 6px;
+    }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .control span {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    .stage-card {
+      padding: 14px;
+    }
+
+    .stage-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 4px 12px;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    .stage-wrap {
+      position: relative;
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at top, rgba(132, 186, 255, 0.24), transparent 32%),
+        linear-gradient(180deg, #284677 0%, #20345b 34%, #48592d 34%, #2a3418 100%);
+    }
+
+    .viewport-frame {
+      position: relative;
+      width: var(--viewport-width);
+      height: var(--viewport-height);
+      transform-origin: center center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      border-radius: 14px;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    canvas,
+    .guide-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .guide-layer {
+      pointer-events: none;
+    }
+
+    .guide-line {
+      position: absolute;
+      opacity: 0.88;
+    }
+
+    .guide-line.anchor {
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(180deg, transparent 0%, var(--guide-anchor) 14%, var(--guide-anchor) 86%, transparent 100%);
+    }
+
+    .guide-line.ground {
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, var(--guide-ground) 10%, var(--guide-ground) 90%, transparent 100%);
+    }
+
+    .guide-marker {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--guide-break);
+      box-shadow: 0 0 0 4px rgba(255, 122, 122, 0.18);
+      transform: translate(-50%, -50%);
+    }
+
+    .guide-tag {
+      position: absolute;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: rgba(6, 10, 18, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-main);
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+      transform: translate(-50%, -50%);
+    }
+
+    .hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 980px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-shell">
+    <section class="panel">
+      <h1>Finish Gate Sandbox</h1>
+      <p>Separate preview for the finish tape animation with the same renderer and geometry used by the game.</p>
+
+      <div class="status-row">
+        <div id="status-assets">Assets: loading...</div>
+        <div id="status-animation">Animation: idle</div>
+        <div id="status-timing">Break duration: 0 ms</div>
+      </div>
+
+      <div class="button-row">
+        <button id="btn-play">Play Break</button>
+        <button id="btn-pause" class="secondary">Pause</button>
+        <button id="btn-reset" class="secondary">Reset</button>
+      </div>
+
+      <div class="control-group">
+        <div class="control">
+          <label for="slider-progress">
+            <span>Progress</span>
+            <span id="label-progress">0.00</span>
+          </label>
+          <input type="range" id="slider-progress" min="0" max="1" step="0.01" value="0">
+        </div>
+
+        <div class="control">
+          <label for="slider-anchor-x">
+            <span>Finish anchor X</span>
+            <span id="label-anchor-x">540 px</span>
+          </label>
+          <input type="range" id="slider-anchor-x" min="180" max="540" step="1" value="540">
+        </div>
+
+        <div class="control">
+          <label for="slider-ground-y">
+            <span>Ground Y</span>
+            <span id="label-ground-y">680 px</span>
+          </label>
+          <input type="range" id="slider-ground-y" min="680" max="1040" step="1" value="680">
+        </div>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="toggle-guides" checked>
+        <span>Show geometry guides</span>
+      </label>
+
+      <div class="hint">
+        Manual slider changes stop playback. Guides show the anchor line, ground line and current tape break point.
+      </div>
+    </section>
+
+    <section class="stage-card">
+      <div class="stage-meta">
+        <div>Viewport 720 x 1280</div>
+        <div id="status-pointer">Click inside the stage to move the anchor</div>
+      </div>
+
+      <div class="stage-wrap" id="stage-wrap">
+        <div class="viewport-frame" id="viewport-frame">
+          <canvas id="game-canvas"></canvas>
+
+          <div class="guide-layer" id="guide-layer">
+            <div class="guide-line anchor" id="anchor-guide"></div>
+            <div class="guide-line ground" id="ground-guide"></div>
+            <div class="guide-marker" id="break-guide"></div>
+            <div class="guide-tag" id="anchor-tag">anchor</div>
+            <div class="guide-tag" id="ground-tag">ground</div>
+            <div class="guide-tag" id="break-tag">break</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.1.1/dist/pixi.mjs",
+        "pixi-filters.js": "https://cdn.jsdelivr.net/npm/pixi-filters@6.0.4/dist/pixi-filters.mjs"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as PIXI from 'pixi.js';
+    import { createPixiRenderer } from '../src/renderers/pixiRenderer.js';
+    import { FINISH_CONFIG, STATES, computeFinishGateGeometry, computeFinishTapeVisualState } from '../src/gameLogic.js';
+
+    window.PIXI = PIXI;
+
+    const VIEWPORT_WIDTH = 720;
+    const VIEWPORT_HEIGHT = 1280;
+    const DEFAULT_ANCHOR_X = 540;
+    const DEFAULT_GROUND_Y = 680;
+    const VIEWPORT_PADDING = 28;
+
+    const ASSET_CONFIG = Object.freeze({
+      finishFloorPattern: Object.freeze({ path: '../src/assets/media/images/finishFloorPattern.png', width: 382, height: 51 }),
+      finishPoleLeft: Object.freeze({ path: '../src/assets/media/images/finishPoleLeft.png', width: 102, height: 8 }),
+      finishPoleRight: Object.freeze({ path: '../src/assets/media/images/finishPoleRight.png', width: 135, height: 13 }),
+      finishTapeLeft: Object.freeze({ path: '../src/assets/media/images/finishTapeLeft.png', width: 40, height: 20 }),
+      finishTapeRight: Object.freeze({ path: '../src/assets/media/images/finishTapeRight.png', width: 46, height: 23 })
+    });
+
+    const elements = {
+      stageWrap: document.getElementById('stage-wrap'),
+      viewportFrame: document.getElementById('viewport-frame'),
+      canvas: document.getElementById('game-canvas'),
+      guideLayer: document.getElementById('guide-layer'),
+      anchorGuide: document.getElementById('anchor-guide'),
+      groundGuide: document.getElementById('ground-guide'),
+      breakGuide: document.getElementById('break-guide'),
+      anchorTag: document.getElementById('anchor-tag'),
+      groundTag: document.getElementById('ground-tag'),
+      breakTag: document.getElementById('break-tag'),
+      statusAssets: document.getElementById('status-assets'),
+      statusAnimation: document.getElementById('status-animation'),
+      statusTiming: document.getElementById('status-timing'),
+      statusPointer: document.getElementById('status-pointer'),
+      btnPlay: document.getElementById('btn-play'),
+      btnPause: document.getElementById('btn-pause'),
+      btnReset: document.getElementById('btn-reset'),
+      sliderProgress: document.getElementById('slider-progress'),
+      sliderAnchorX: document.getElementById('slider-anchor-x'),
+      sliderGroundY: document.getElementById('slider-ground-y'),
+      labelProgress: document.getElementById('label-progress'),
+      labelAnchorX: document.getElementById('label-anchor-x'),
+      labelGroundY: document.getElementById('label-ground-y'),
+      toggleGuides: document.getElementById('toggle-guides')
+    };
+
+    const sandboxState = {
+      progress: 0,
+      anchorX: DEFAULT_ANCHOR_X,
+      groundY: DEFAULT_GROUND_Y,
+      isAnimating: false,
+      animationStartedAt: 0,
+      animationStartProgress: 0,
+      animationFrameId: 0,
+      showGuides: true
+    };
+
+    const sceneState = {
+      mode: STATES.running,
+      finishLine: {
+        x: DEFAULT_ANCHOR_X,
+        y: DEFAULT_GROUND_Y,
+        tapeBroken: false,
+        tapeBreakElapsedMs: 0,
+        tapeBreakProgress: 0
+      },
+      resources: { images: {} },
+      layoutState: {
+        orientation: 'portrait',
+        cameraViewWorldRect: { x: 0, y: 0, width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+        cameraTransform: { scale: 1, offsetX: 0, offsetY: 0 },
+        worldViewportRect: { x: 0, y: 0, width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+        gameplayTokens: { runtimeGroundY: DEFAULT_GROUND_Y }
+      }
+    };
+
+    const frame = {
+      state: sceneState,
+      layoutState: sceneState.layoutState,
+      elapsedSeconds: 0
+    };
+
+    const renderer = createPixiRenderer({
+      canvas: elements.canvas,
+      width: VIEWPORT_WIDTH,
+      height: VIEWPORT_HEIGHT
+    });
+
+    function updateSliderLabels() {
+      elements.labelProgress.textContent = sandboxState.progress.toFixed(2);
+      elements.labelAnchorX.textContent = `${Math.round(sandboxState.anchorX)} px`;
+      elements.labelGroundY.textContent = `${Math.round(sandboxState.groundY)} px`;
+      elements.statusTiming.textContent = `Break duration: ${Math.round(sandboxState.progress * FINISH_CONFIG.tapeBreakAnimationMs)} / ${FINISH_CONFIG.tapeBreakAnimationMs} ms`;
+      elements.statusAnimation.textContent = sandboxState.isAnimating ? 'Animation: playing' : 'Animation: idle';
+      elements.sliderProgress.value = String(sandboxState.progress);
+      elements.sliderAnchorX.value = String(Math.round(sandboxState.anchorX));
+      elements.sliderGroundY.value = String(Math.round(sandboxState.groundY));
+    }
+
+    function setGuidesVisible(visible) {
+      elements.guideLayer.style.display = visible ? 'block' : 'none';
+    }
+
+    function syncSceneState() {
+      sceneState.finishLine.x = sandboxState.anchorX;
+      sceneState.finishLine.y = sandboxState.groundY;
+      sceneState.finishLine.tapeBroken = sandboxState.progress > 0;
+      sceneState.finishLine.tapeBreakProgress = sandboxState.progress;
+      sceneState.finishLine.tapeBreakElapsedMs = sandboxState.progress * FINISH_CONFIG.tapeBreakAnimationMs;
+      sceneState.layoutState.gameplayTokens.runtimeGroundY = sandboxState.groundY;
+      frame.elapsedSeconds = performance.now() / 1000;
+    }
+
+    function positionTag(element, x, y, label) {
+      element.textContent = label;
+      element.style.left = `${x}px`;
+      element.style.top = `${y}px`;
+    }
+
+    function renderGuides() {
+      const geometry = computeFinishGateGeometry(sceneState.finishLine, sandboxState.groundY, sceneState.resources.images);
+      if (!geometry) {
+        setGuidesVisible(false);
+        return;
+      }
+      const visualTapeState = computeFinishTapeVisualState(geometry, sandboxState.progress);
+      const breakX = visualTapeState?.breakLineX ?? geometry.tape.breakLineX;
+      const breakY = visualTapeState?.breakLineY ?? geometry.tape.breakLineY;
+
+      setGuidesVisible(sandboxState.showGuides);
+
+      elements.anchorGuide.style.left = `${geometry.anchorX}px`;
+      elements.groundGuide.style.top = `${sandboxState.groundY}px`;
+      elements.breakGuide.style.left = `${breakX}px`;
+      elements.breakGuide.style.top = `${breakY}px`;
+
+      positionTag(elements.anchorTag, geometry.anchorX, 24, `anchor ${Math.round(geometry.anchorX)}`);
+      positionTag(elements.groundTag, 82, sandboxState.groundY - 12, `ground ${Math.round(sandboxState.groundY)}`);
+      positionTag(
+        elements.breakTag,
+        breakX,
+        Math.max(28, breakY - 18),
+        `break ${Math.round(breakX)}, ${Math.round(breakY)}`
+      );
+    }
+
+    function render() {
+      syncSceneState();
+      renderer.render(frame);
+      renderGuides();
+      updateSliderLabels();
+    }
+
+    function stopAnimation() {
+      sandboxState.isAnimating = false;
+      sandboxState.animationStartedAt = 0;
+      sandboxState.animationStartProgress = sandboxState.progress;
+      updateSliderLabels();
+    }
+
+    function startAnimation() {
+      if (sandboxState.progress >= 1) {
+        sandboxState.progress = 0;
+      }
+      sandboxState.isAnimating = true;
+      sandboxState.animationStartProgress = sandboxState.progress;
+      sandboxState.animationStartedAt = performance.now();
+      updateSliderLabels();
+    }
+
+    function resetSandbox() {
+      stopAnimation();
+      sandboxState.progress = 0;
+      sandboxState.anchorX = DEFAULT_ANCHOR_X;
+      sandboxState.groundY = DEFAULT_GROUND_Y;
+      elements.statusPointer.textContent = 'Click inside the stage to move the anchor';
+      render();
+    }
+
+    function fitViewportToStage() {
+      const availableWidth = elements.stageWrap.clientWidth - VIEWPORT_PADDING;
+      const availableHeight = Math.max(320, window.innerHeight - 140);
+      const scale = Math.min(1, availableWidth / VIEWPORT_WIDTH, availableHeight / VIEWPORT_HEIGHT);
+      elements.viewportFrame.style.transform = `scale(${scale})`;
+      elements.stageWrap.style.minHeight = `${Math.max(420, VIEWPORT_HEIGHT * scale + VIEWPORT_PADDING)}px`;
+    }
+
+    function createSvgDataUrl(width, height, body) {
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+          ${body}
+        </svg>
+      `;
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    }
+
+    function fallbackAssetSource(key, width, height) {
+      switch (key) {
+        case 'finishFloorPattern':
+          return createSvgDataUrl(
+            width,
+            height,
+            `
+              <rect width="${width}" height="${height}" rx="8" fill="#f5f0db"/>
+              <path d="M0 ${height * 0.55} H${width}" stroke="#d8c89a" stroke-width="10"/>
+              <path d="M0 ${height * 0.85} H${width}" stroke="#b99f61" stroke-width="8"/>
+            `
+          );
+        case 'finishPoleLeft':
+        case 'finishPoleRight':
+          return createSvgDataUrl(
+            width,
+            height,
+            `
+              <rect width="${width}" height="${height}" rx="${Math.max(2, height / 2)}" fill="#f1d4a8"/>
+              <rect y="${height * 0.15}" width="${width}" height="${height * 0.24}" fill="#fff5de" opacity="0.8"/>
+            `
+          );
+        case 'finishTapeLeft':
+        case 'finishTapeRight':
+          return createSvgDataUrl(
+            width,
+            height,
+            `
+              <rect width="${width}" height="${height}" rx="${Math.max(2, height / 2)}" fill="#ff4d4d"/>
+              <circle cx="${width * 0.28}" cy="${height * 0.5}" r="${height * 0.18}" fill="#fff1d6"/>
+              <circle cx="${width * 0.72}" cy="${height * 0.5}" r="${height * 0.18}" fill="#fff1d6"/>
+            `
+          );
+        default:
+          return createSvgDataUrl(width, height, `<rect width="${width}" height="${height}" fill="#ffffff"/>`);
+      }
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+    }
+
+    async function loadFinishAssets() {
+      const images = {};
+      const reportParts = [];
+
+      for (const [key, asset] of Object.entries(ASSET_CONFIG)) {
+        try {
+          images[key] = await loadImage(asset.path);
+          reportParts.push(`${key}: real`);
+        } catch {
+          images[key] = await loadImage(fallbackAssetSource(key, asset.width, asset.height));
+          reportParts.push(`${key}: fallback`);
+        }
+      }
+
+      elements.statusAssets.textContent = `Assets: ${reportParts.join(', ')}`;
+      return images;
+    }
+
+    function updateAnimationFrame(now) {
+      if (sandboxState.isAnimating) {
+        const elapsed = now - sandboxState.animationStartedAt;
+        const startMs = sandboxState.animationStartProgress * FINISH_CONFIG.tapeBreakAnimationMs;
+        const nextMs = Math.min(FINISH_CONFIG.tapeBreakAnimationMs, startMs + elapsed);
+        sandboxState.progress = nextMs / FINISH_CONFIG.tapeBreakAnimationMs;
+        if (sandboxState.progress >= 1) {
+          stopAnimation();
+        }
+      }
+
+      render();
+      sandboxState.animationFrameId = requestAnimationFrame(updateAnimationFrame);
+    }
+
+    function bindControls() {
+      elements.btnPlay.addEventListener('click', () => {
+        startAnimation();
+      });
+
+      elements.btnPause.addEventListener('click', () => {
+        stopAnimation();
+      });
+
+      elements.btnReset.addEventListener('click', () => {
+        resetSandbox();
+      });
+
+      elements.sliderProgress.addEventListener('input', (event) => {
+        stopAnimation();
+        sandboxState.progress = Number(event.target.value);
+        render();
+      });
+
+      elements.sliderAnchorX.addEventListener('input', (event) => {
+        sandboxState.anchorX = Number(event.target.value);
+        render();
+      });
+
+      elements.sliderGroundY.addEventListener('input', (event) => {
+        sandboxState.groundY = Number(event.target.value);
+        render();
+      });
+
+      elements.toggleGuides.addEventListener('change', (event) => {
+        sandboxState.showGuides = event.target.checked;
+        renderGuides();
+      });
+
+      elements.viewportFrame.addEventListener('click', (event) => {
+        const rect = elements.viewportFrame.getBoundingClientRect();
+        const scaleX = VIEWPORT_WIDTH / rect.width;
+        const localX = (event.clientX - rect.left) * scaleX;
+        sandboxState.anchorX = Math.min(540, Math.max(180, localX));
+        elements.statusPointer.textContent = `Anchor moved to ${Math.round(sandboxState.anchorX)} px`;
+        render();
+      });
+
+      window.addEventListener('resize', fitViewportToStage);
+      window.addEventListener('beforeunload', () => {
+        if (sandboxState.animationFrameId) {
+          cancelAnimationFrame(sandboxState.animationFrameId);
+        }
+      });
+    }
+
+    async function init() {
+      fitViewportToStage();
+      bindControls();
+      await renderer.init();
+      sceneState.resources.images = await loadFinishAssets();
+      render();
+      sandboxState.animationFrameId = requestAnimationFrame(updateAnimationFrame);
+    }
+
+    init().catch((error) => {
+      console.error(error);
+      elements.statusAssets.textContent = `Assets: init failed (${error?.message || 'unknown error'})`;
+      elements.statusAnimation.textContent = 'Animation: init failed';
+    });
+  </script>
+</body>
+
+</html>

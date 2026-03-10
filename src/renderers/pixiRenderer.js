@@ -1,4 +1,4 @@
-import { STATES, computeFinishGateGeometry } from "../gameLogic.js";
+import { STATES, computeFinishGateGeometry, computeFinishTapeVisualState } from "../gameLogic.js";
 import { ASSET_FRAMES } from "../assets/frames.js";
 
 let pixiGlobalPromise = null;
@@ -1098,10 +1098,10 @@ export function createPixiRenderer(options = {}) {
     const renderWorldMinX = -overscan.left - decorSpawnPad.left;
     const effectiveWorldWidth = Math.min(
       visibleWorldWidth +
-        overscan.left +
-        overscan.right +
-        decorSpawnPad.left +
-        decorSpawnPad.right,
+      overscan.left +
+      overscan.right +
+      decorSpawnPad.left +
+      decorSpawnPad.right,
       MAX_DECOR_WORLD_WIDTH
     );
     const renderWorldMaxX = renderWorldMinX + effectiveWorldWidth;
@@ -1557,8 +1557,20 @@ export function createPixiRenderer(options = {}) {
     finishState.floor = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
     finishState.leftPole = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
     finishState.rightPole = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
-    finishState.leftTape = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
-    finishState.rightTape = new PIXIRef.Sprite(PIXIRef.Texture.WHITE);
+
+    const ROPE_SEGMENTS = 20;
+    const leftPoints = [];
+    const rightPoints = [];
+    for (let i = 0; i < ROPE_SEGMENTS; i++) {
+      leftPoints.push(new PIXIRef.Point(i * 10, 0)); // Spacing will be overridden dynamically
+      rightPoints.push(new PIXIRef.Point(i * 10, 0));
+    }
+    finishState.leftTapePoints = leftPoints;
+    finishState.rightTapePoints = rightPoints;
+
+    // Create MeshRopes using the points
+    finishState.leftTape = new PIXIRef.MeshRope({ texture: PIXIRef.Texture.WHITE, points: leftPoints });
+    finishState.rightTape = new PIXIRef.MeshRope({ texture: PIXIRef.Texture.WHITE, points: rightPoints });
     finishState.leftPoleFallback = new PIXIRef.Graphics();
     finishState.rightPoleFallback = new PIXIRef.Graphics();
 
@@ -1606,6 +1618,41 @@ export function createPixiRenderer(options = {}) {
     visibleDisplay(sprite, true);
   }
 
+  function applyTapeRope(mesh, points, texture, startPoint, endPoint, heightValue, textureHeight, visualTapeState, anchorAtStart) {
+    if (!mesh || !Array.isArray(points) || points.length === 0 || !texture || !startPoint || !endPoint || !textureHeight) {
+      return;
+    }
+
+    mesh.texture = texture;
+    mesh.x = startPoint.x;
+    mesh.y = startPoint.y;
+    mesh.rotation = 0;
+    mesh.scale.set(1, heightValue / textureHeight);
+    visibleDisplay(mesh, true);
+
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const pathLength = Math.hypot(dx, dy);
+    const normalX = pathLength > 1e-6 ? -dy / pathLength : 0;
+    const normalY = pathLength > 1e-6 ? dx / pathLength : 1;
+    const waveAmplitude = visualTapeState?.waveAmplitude ?? 0;
+    const waveCycles = visualTapeState?.waveCycles ?? 0;
+    const wavePhase = visualTapeState?.wavePhase ?? 0;
+
+    for (let i = 0; i < points.length; i += 1) {
+      const t = points.length === 1 ? 0 : i / (points.length - 1);
+      const anchorDistanceRatio = anchorAtStart ? t : 1 - t;
+      const wave = Math.sin(anchorDistanceRatio * Math.PI * waveCycles - wavePhase) *
+        waveAmplitude *
+        anchorDistanceRatio;
+
+      points[i].set(
+        dx * t + normalX * wave,
+        dy * t + normalY * wave
+      );
+    }
+  }
+
   function syncFinishLayer(sceneState, groundY) {
     const finish = sceneState?.finishLine;
     const nodes = ensureFinishNodes();
@@ -1643,65 +1690,43 @@ export function createPixiRenderer(options = {}) {
       const rightPoleSprite = finishGeometry.sprites.rightPole;
       const leftTapeSprite = finishGeometry.sprites.leftTape;
       const rightTapeSprite = finishGeometry.sprites.rightTape;
+      const leftTapeSegment = finishGeometry.tape.left;
+      const rightTapeSegment = finishGeometry.tape.right;
       const tapeBreakProgress = hasNumber(finish?.tapeBreakProgress)
         ? clamp01(finish.tapeBreakProgress)
         : finish?.tapeBroken
           ? 1
           : 0;
-
-      const leftTapeSkewY = interpolateKeyframes01(
-        [
-          { t: 0, value: 0 },
-          { t: 0.14, value: 0 },
-          { t: 0.3, value: -0.22 },
-          { t: 0.52, value: 0.14 },
-          { t: 0.74, value: -0.08 },
-          { t: 1, value: 0 }
-        ],
-        tapeBreakProgress
-      );
-      const rightTapeSkewY = interpolateKeyframes01(
-        [
-          { t: 0, value: 0 },
-          { t: 0.14, value: 0 },
-          { t: 0.3, value: 0.22 },
-          { t: 0.54, value: -0.14 },
-          { t: 0.76, value: 0.08 },
-          { t: 1, value: 0 }
-        ],
-        tapeBreakProgress
-      );
-      const leftTapeSkewX = interpolateKeyframes01(
-        [
-          { t: 0, value: 0 },
-          { t: 0.34, value: 0.05 },
-          { t: 0.58, value: -0.035 },
-          { t: 1, value: 0 }
-        ],
-        tapeBreakProgress
-      );
-      const rightTapeSkewX = interpolateKeyframes01(
-        [
-          { t: 0, value: 0 },
-          { t: 0.34, value: -0.05 },
-          { t: 0.58, value: 0.035 },
-          { t: 1, value: 0 }
-        ],
-        tapeBreakProgress
-      );
+      const visualTapeState = computeFinishTapeVisualState(finishGeometry, tapeBreakProgress);
+      const leftTapeRenderFree = visualTapeState?.leftRenderFree ?? leftTapeSegment.free;
+      const rightTapeRenderFree = visualTapeState?.rightRenderFree ?? rightTapeSegment.free;
 
       applyScaledSprite(nodes.floor, floorPattern, floorSprite.x, floorSprite.y, floorSprite.width, floorSprite.height);
       applyRotatedSprite(nodes.leftPole, leftPole, leftPoleSprite);
       applyRotatedSprite(nodes.rightPole, rightPole, rightPoleSprite);
-      applyRotatedSprite(nodes.leftTape, leftTape, leftTapeSprite);
-      applyRotatedSprite(nodes.rightTape, rightTape, rightTapeSprite);
 
-      if (nodes.leftTape?.skew?.set) {
-        nodes.leftTape.skew.set(leftTapeSkewX, leftTapeSkewY);
-      }
-      if (nodes.rightTape?.skew?.set) {
-        nodes.rightTape.skew.set(rightTapeSkewX, rightTapeSkewY);
-      }
+      applyTapeRope(
+        nodes.leftTape,
+        nodes.leftTapePoints,
+        leftTape,
+        leftTapeSegment.anchor,
+        leftTapeRenderFree,
+        leftTapeSprite.height,
+        leftTape.height,
+        visualTapeState,
+        true
+      );
+      applyTapeRope(
+        nodes.rightTape,
+        nodes.rightTapePoints,
+        rightTape,
+        rightTapeRenderFree,
+        rightTapeSegment.anchor,
+        rightTapeSprite.height,
+        rightTape.height,
+        visualTapeState,
+        false
+      );
 
       hideDisplay(nodes.leftPoleFallback);
       hideDisplay(nodes.rightPoleFallback);
